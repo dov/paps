@@ -459,10 +459,15 @@ void draw_bezier_outline(paps_private_t *paps,
       outline_info.glyph_origin.y = pos_y;
       outline_info.out_string = glyph_def_string;
 
+      FT_Load_Glyph(face, glyph_info->glyph, load_flags);
+
+      // Sorry - No support for bitmap glyphs at the moment. :-(
+      if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP)
+	  return;
+      
       g_string_append(glyph_def_string,
 		      "start_ol\n");
       
-      FT_Load_Glyph(face, glyph_info->glyph, load_flags);
       FT_Get_Glyph (face->glyph, &glyph);
       FT_Outline_Decompose (&(((FT_OutlineGlyph)glyph)->outline),
                             outlinefunc, &outline_info);
@@ -475,7 +480,8 @@ void draw_bezier_outline(paps_private_t *paps,
 
       // TBD - Check if the glyph_def_string is empty. If so, set the
       // id to the character to "" and don't draw it.
-      if (outline_info.is_empty) 
+      if (outline_info.is_empty
+	  || glyph_info->glyph == 0) 
 	id[0] = '*';
       else 
 	// Put the font in the font def dictionary

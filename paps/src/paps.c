@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
   PangoContext *pango_context;
   PangoFontDescription *font_description;
   PangoDirection pango_dir = PANGO_DIRECTION_LTR;
-  char *font_family = "sans";
+  char *font_family = "Monospace";
   int font_scale = 12;
   int num_pages = 1;
   int num_columns = 1;
@@ -167,6 +167,10 @@ int main(int argc, char *argv[])
   gboolean do_draw_header = FALSE;
   gboolean do_justify = FALSE;
   gchar *paps_header = NULL;
+  int top_margin = 36;
+  int bottom_margin = 36;
+  int left_margin = 36;
+  int right_margin = 36;
 
   /* Prerequisite when using glib. */
   g_type_init();
@@ -181,7 +185,9 @@ int main(int argc, char *argv[])
                  "\n"
                  "Syntax:\n"
                  "    paps [--landscape] [--columns cl] [--font_scale fs]\n"
-                 "         [--family f] [--rtl] [--paper=type]\n"
+                 "         [--family f] [--rtl] [--paper type]\n"
+		 "         [--bottom-margin bm] [--top-margin tm] [--left-margin lm]\n"
+		 "         [--right-margin rm]\n"
                  "\n"
                  "Description:\n"
                  "    paps reads a UTF-8 encoded file and generates a PostScript\n"
@@ -189,13 +195,18 @@ int main(int argc, char *argv[])
                  "    outline curves through the pango FT2 backend.\n"
                  "\n"
                  "Options:\n"
-                 "    --landscape     Landscape output. Default is portrait.\n"
-                 "    --columns cl    Number of columns output. Default is 1.\n"
-                 "    --font_scale fs  Font scaling. Default is 12.\n"
-                 "    --family f      Pango ft2 font family. Default is sans.\n"
-                 "    --rtl           Do rtl layout.\n"
-		 "    --paper=letter  Use US Letter page layout. Default is A4.\n"
-		 "    --paper=legal   Use US Legal pge layout. Default is A4.\n"
+                 "    --landscape         Landscape output. Default is portrait.\n"
+                 "    --columns cl        Number of columns output. Default is 1.\n"
+                 "    --font_scale fs     Font scaling. Default is 12.\n"
+                 "    --family f          Pango ft2 font family. Default is sans.\n"
+                 "    --rtl               Do rtl layout.\n"
+		 "    --paper ps          Choose paper size. Known paper sizes are legal, letter, a4.\n"
+		 "                        Default is A4.\n"
+		 "    --bottom-margin bm  Set bottom margin. Default is 36."
+		 "    --top-margin tm     Set top margin. Default is 36."
+		 "    --left-margin lm    Set left margin. Default is 36."
+		 "    --right-margin rm   Set right margin. Default is 36."
+
                  );
                  
           exit(0);
@@ -206,10 +217,38 @@ int main(int argc, char *argv[])
       CASE("--family") { font_family = argv[argp++]; continue; }
       CASE("--rtl") { pango_dir = PANGO_DIRECTION_RTL; continue; }
       CASE("--justify") { do_justify = TRUE; continue; }
-      CASE("--paper=letter") { paper_type=PAPER_TYPE_US_LETTER; continue; }
-      CASE("--paper=legal") { paper_type=PAPER_TYPE_US_LEGAL; continue; }
+      CASE("--paper")
+	{
+	  char *S_ = argv[argp++];
+	  while(1) /* So that I can break */
+	    {
+	      CASE("legal") { paper_type=PAPER_TYPE_US_LEGAL; break; }
+	      CASE("letter") { paper_type=PAPER_TYPE_US_LETTER; break; }
+	      CASE("a4") { paper_type=PAPER_TYPE_A4; break; }
+
+	      fprintf(stderr, "Unknown page size %s!\n", S_);
+	      exit(1);
+	    }
+	  continue;
+	}
+      CASE("--bottom-margin")
+	{
+	  bottom_margin = atoi(argv[argp++]); continue;
+	}
+      CASE("--top-margin")
+	{
+	  top_margin = atoi(argv[argp++]); continue;
+	}
+      CASE("--right-margin")
+	{
+	  right_margin = atoi(argv[argp++]); continue;
+	}
+      CASE("--left-margin")
+	{
+	  left_margin = atoi(argv[argp++]); continue;
+	}
       fprintf(stderr, "Unknown option %s!\n", S_);
-      exit(0);
+      exit(1);
     }
 
   if (argp < argc)
@@ -275,11 +314,11 @@ int main(int argc, char *argv[])
   page_layout.page_width = page_width;
   page_layout.page_height = page_height;
   page_layout.num_columns = num_columns;
-  page_layout.left_margin = 36;
-  page_layout.right_margin = 36;
+  page_layout.left_margin = left_margin;
+  page_layout.right_margin = right_margin;
   page_layout.gutter_width = gutter_width;
-  page_layout.top_margin = 36;
-  page_layout.bottom_margin = 18;
+  page_layout.top_margin = top_margin;
+  page_layout.bottom_margin = bottom_margin;
   page_layout.header_ypos = page_layout.top_margin;
   if (do_draw_header)
     page_layout.header_sep = font_scale * 2.5;
@@ -358,6 +397,10 @@ read_file (FILE *file)
     }
 
   fclose (file);
+
+  /* Add a trailing new line if it is missing */
+  if (inbuf->str[inbuf->len-1] != '\n')
+    g_string_append(inbuf, "\n");
 
   text = inbuf->str;
   g_string_free (inbuf, FALSE);

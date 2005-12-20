@@ -2,3 +2,6 @@
   smaller PDF files after running through ps2pdf.
 
 * Alternatively create PDF generating backend.
+
+* Replace command line parsing with getopts.
+

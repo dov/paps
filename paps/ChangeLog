@@ -1,3 +1,17 @@
+2005-12-20  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+
+	* Released new version 0.6.2
+
+	* src/libpaps.c: Skip bitmap glyphs in order not to crash in 
+	decomposition.
+
+	* src/paps.c: Created external for margin settings.
+
+	* src/libpaps.c: Fixed default font to monospace per Jan Willem 
+	Stumpel suggestion.
+
+	* src/paps.c: Fixed printing of row that lacks a trailing newline.
+
 2005-11-24  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
 
 	* src/libpaps.c: Fixed potential sprintf buffer overrun bug.
