@@ -1,0 +1,5 @@
+libplis is a library for converting Unicode text encoded in UTF-8
+to postscript by using pango.
+
+plis is a command line program using this library.
+

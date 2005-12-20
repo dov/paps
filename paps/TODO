@@ -1,0 +1,4 @@
+* Embed character outlines in Type3 fonts in order to make substantially 
+  smaller PDF files after running through ps2pdf.
+
+* Alternatively create PDF generating backend.

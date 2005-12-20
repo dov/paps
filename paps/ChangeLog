@@ -1,0 +1,22 @@
+2005-11-24  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+
+	* src/libpaps.c: Fixed potential sprintf buffer overrun bug.
+
+	* src/paps.c: Added options for letter and legal paper sizes
+
+	* src/paps.c: Added postscript commands for setting page size
+
+	* src/paps.c: Added DSC comments for orientation
+
+2005-11-19  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+
+	* Released new version 0.6.1
+
+	* src/libpaps.c: Fixed scaling bug in output postscript. The 
+	characters were to small by a factor of 72/64 due to different
+	coordinate systems in PostScript and freetype2.
+
+	* src/libpaps.c: Various cleanup of the library.
+
+
+
