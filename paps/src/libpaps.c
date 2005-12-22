@@ -419,10 +419,10 @@ void draw_bezier_outline(paps_private_t *paps,
                          double pos_y
                          )
 {
+  static gchar glyph_hash_string[100];
   double scale = 72.0 / PANGO_SCALE  / PAPS_DPI;
   double epsilon = 1e-2;
   double glyph_width = glyph_info->geometry.width * scale;
-  gchar glyph_hash_string[20];
   gchar *id;
 
   /* Output outline */

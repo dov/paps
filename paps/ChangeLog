@@ -1,4 +1,8 @@
-2005-12-20  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+2005-12-22  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* src/libpaps.c: Fixed overflow of static hash character size.
+
+2005-12-20  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* Released new version 0.6.2
 
@@ -12,7 +16,7 @@
 
 	* src/paps.c: Fixed printing of row that lacks a trailing newline.
 
-2005-11-24  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+2005-11-24  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* src/libpaps.c: Fixed potential sprintf buffer overrun bug.
 
@@ -22,7 +26,7 @@
 
 	* src/paps.c: Added DSC comments for orientation
 
-2005-11-19  Dov Grobgeld  <dov.grobgeld@weizmann.ac.il>
+2005-11-19  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* Released new version 0.6.1
 
