@@ -1,4 +1,13 @@
+2006-03-28  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* src/paps.c: Applied tagoh's patch for setting the page size
+	in PostScript.
+
+	* src/paps.c: Fixed linebreaks in --help printout.
+
 2005-12-22  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* Released new bugfix version 0.6.3
 
 	* src/libpaps.c: Fixed overflow of static hash character size.
 

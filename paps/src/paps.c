@@ -200,12 +200,12 @@ int main(int argc, char *argv[])
                  "    --font_scale fs     Font scaling. Default is 12.\n"
                  "    --family f          Pango ft2 font family. Default is sans.\n"
                  "    --rtl               Do rtl layout.\n"
-		 "    --paper ps          Choose paper size. Known paper sizes are legal, letter, a4.\n"
-		 "                        Default is A4.\n"
-		 "    --bottom-margin bm  Set bottom margin. Default is 36."
-		 "    --top-margin tm     Set top margin. Default is 36."
-		 "    --left-margin lm    Set left margin. Default is 36."
-		 "    --right-margin rm   Set right margin. Default is 36."
+		 "    --paper ps          Choose paper size. Known paper sizes are legal, letter,\n"
+                 "                        A4. Default is A4.\n"
+		 "    --bottom-margin bm  Set bottom margin. Default is 36.\n"
+		 "    --top-margin tm     Set top margin. Default is 36.\n"
+		 "    --left-margin lm    Set left margin. Default is 36.\n"
+		 "    --right-margin rm   Set right margin. Default is 36.\n"
 
                  );
                  
@@ -225,6 +225,7 @@ int main(int argc, char *argv[])
 	      CASE("legal") { paper_type=PAPER_TYPE_US_LEGAL; break; }
 	      CASE("letter") { paper_type=PAPER_TYPE_US_LETTER; break; }
 	      CASE("a4") { paper_type=PAPER_TYPE_A4; break; }
+	      CASE("A4") { paper_type=PAPER_TYPE_A4; break; }
 
 	      fprintf(stderr, "Unknown page size %s!\n", S_);
 	      exit(1);
@@ -556,8 +557,9 @@ void print_postscript_header(FILE *OUT,
   fprintf(OUT,
           "%%!PS-Adobe-3.0\n"
           "%%%%Title: %s\n"
-          "%%%%Creator: paps version 0.1 by Dov Grobgeld\n"
+          "%%%%Creator: paps version 0.6.3 by Dov Grobgeld\n"
           "%%%%Pages: (atend)\n"
+          "%%%%BoundingBox: 0 0 %d %d\n"
           "%%%%BeginProlog\n"
 	  "%%%%Orientation: %s\n"
 	  "/papsdict 1 dict def\n"
@@ -605,6 +607,8 @@ void print_postscript_header(FILE *OUT,
           "  0 pageheight neg translate\n"
           "} def\n",
           title,
+          page_layout->page_width,
+          page_layout->page_height,
 	  orientation_names[orientation]
           );
   
@@ -612,6 +616,7 @@ void print_postscript_header(FILE *OUT,
           "%% User settings\n"
           "/pagewidth %d def\n"
           "/pageheight %d def\n"
+          "pagewidth pageheight setpagesize\n"
           "/column_width %d def\n"
           
           "/bodyheight %d def\n"
