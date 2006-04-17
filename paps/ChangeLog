@@ -1,3 +1,33 @@
+2006-04-17  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* configure.in: Bumped version to 0.6.5
+
+	* src/paps.c: Made header separation independant on font scale.
+
+	* src/paps.c: Made header font description independent on font scale.
+
+	* doc/mainpage.h: Fixed typo.
+
+	* src/paps.c: Output GOption parser message when parsing fails.
+
+	* src/paps.1: Fixed man page so that it corresponds to goption parser.
+
+	* src/paps.c: Fixed header position so that it takes margins into account.
+
+	* src/Makefile.am: Added pango.1 to EXTRA_DIST to make it part of tar file.
+
+2006-04-09  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* src/paps.c: Added tagoh's header and footer patch.
+
+	* src/paps.c: Added tagoh's goption patch.
+
+2006-04-08  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* Release new version 0.6.4
+
+	* src/paps.1: Added man page contributed by Lior Kaplan.
+
 2006-03-28  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* src/paps.c: Applied tagoh's patch for setting the page size

@@ -18,7 +18,6 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  *
- *   * Turn into a reusable library.
  */
 
 
@@ -30,6 +29,7 @@
 #include <string.h>
 
 #define BUFSIZE 1024
+#define HEADER_FONT_SCALE 12
 
 typedef enum {
     PAPER_TYPE_A4 = 0,
@@ -63,6 +63,8 @@ typedef struct {
   int page_height;
   int header_ypos;
   int header_sep;
+  int header_height;
+  int footer_height;
   gboolean do_draw_header;
   gboolean do_draw_footer;
   gboolean do_duplex;
@@ -72,6 +74,8 @@ typedef struct {
   gboolean do_separation_line;
   gboolean do_draw_contour;
   PangoDirection pango_dir;
+  gchar *filename;
+  gchar *header_font_desc;
 } page_layout_t;
 
 typedef struct {
@@ -97,32 +101,39 @@ struct _Paragraph {
 };
 
 /* Information passed in user data when drawing outlines */
-GList *split_paragraphs_into_lines(GList *paragraphs);
-static char *read_file (FILE *file);
-static GList *
-split_text_into_paragraphs (PangoContext *pango_context,
-                            page_layout_t *page_layout,
-                            int paint_width,
-                            char *text);
+GList        *split_paragraphs_into_lines  (GList           *paragraphs);
+static char  *read_file                    (FILE            *file);
+static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
+                                            page_layout_t   *page_layout,
+                                            int              paint_width,
+                                            char            *text);
+static int    output_pages                 (FILE            *OUT,
+                                            GList           *pango_lines,
+                                            page_layout_t   *page_layout,
+                                            gboolean         need_header,
+                                            PangoContext    *pango_context);
+static void   print_postscript_header      (FILE            *OUT,
+                                            const char      *title,
+                                            page_layout_t   *page_layout);
+static void   print_postscript_trailer     (FILE            *OUT,
+                                            int              num_pages);
+static void   eject_column                 (FILE            *OUT,
+                                            page_layout_t   *page_layout,
+                                            int              column_idx);
+static void   eject_page                   (FILE            *OUT);
+static void   start_page                   (FILE            *OUT,
+                                            int              page_idx);
+static void   draw_line_to_page            (FILE            *OUT,
+                                            int              column_idx,
+                                            int              column_pos,
+                                            page_layout_t   *page_layout,
+                                            PangoLayoutLine *line);
+static int    draw_page_header_line_to_page(FILE            *OUT,
+                                            gboolean         is_footer,
+                                            page_layout_t   *page_layout,
+                                            PangoContext    *ctx,
+                                            int              page);
 
-int output_pages(FILE *OUT,
-                 GList *pango_lines,
-                 page_layout_t *page_layout);
-void print_postscript_header(FILE *OUT,
-                             const char *title,
-                             page_layout_t *page_layout);
-void print_postscript_trailer(FILE *OUT, int num_pages);
-void print_svg_trailer(FILE *OUT, int num_pages);
-void eject_column(FILE *OUT,
-                  page_layout_t *page_layout,
-                  int column_idx);
-void eject_page(FILE *OUT);
-void start_page(FILE *OUT, int page_idx);
-void draw_line_to_page(FILE *OUT,
-                      int column_idx,
-                      int column_pos,
-                      page_layout_t *page_layout,
-                      PangoLayoutLine *line);
 // Fonts are three character symbols in an alphabet composing of
 // the following characters:
 //
@@ -136,12 +147,64 @@ int last_char_idx = 0;
 double last_pos_y = -1;
 double last_pos_x = -1;
 paps_t *paps;
+paper_type_t paper_type = PAPER_TYPE_A4;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
 
+static gboolean
+_paps_arg_paper_cb(const char *option_name,
+                   const char *value,
+                   gpointer    data)
+{
+  gboolean retval = TRUE;
+  
+  if (value && *value)
+    {
+      if (g_ascii_strcasecmp(value, "legal") == 0)
+        paper_type = PAPER_TYPE_US_LEGAL;
+      else if (g_ascii_strcasecmp(value, "letter") == 0)
+        paper_type = PAPER_TYPE_US_LETTER;
+      else if (g_ascii_strcasecmp(value, "a4") == 0)
+        paper_type = PAPER_TYPE_A4;
+      else {
+        retval = FALSE;
+        fprintf(stderr, "Unknown page size name: %s.\n", value);
+      }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify page size.\n");
+      retval = FALSE;
+    }
+  
+  return retval;
+}
+
 int main(int argc, char *argv[])
 {
-  int argp=1;
+  gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
+  int num_columns = 1, font_scale = 12;
+  int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
+  char *font_family = "Monospace";
+  GOptionContext *ctxt = g_option_context_new("[text file]");
+  GOptionEntry entries[] = {
+    {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
+    {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
+    {"font_scale", 0, 0, G_OPTION_ARG_INT, &font_scale, "Font scaling. (Default: 12)", "NUM"},
+    {"family", 0, 0, G_OPTION_ARG_STRING, &font_family, "Pango FT2 font family. (Default: Monospace)", "FAMILY"},
+    {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
+    {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify, "Do justify the lines.", NULL},
+    {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
+     "Choose paper size. Known paper sizes are legal,\n"
+     "                          letter, a4. (Default: a4)", "PAPER"},
+    {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin, "Set bottom margin. (Default: 36)", "NUM"},
+    {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin, "Set top margin. (Default: 36)", "NUM"},
+    {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin, "Set right margin. (Default: 36)", "NUM"},
+    {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin, "Set left margin. (Default: 36)", "NUM"},
+    {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header, "Draw page header for each page.", NULL},
+    {NULL}
+  };
+  GError *error = NULL;
   char *filename_in;
   char *title;
   FILE *IN, *OUT = NULL;
@@ -152,113 +215,40 @@ int main(int argc, char *argv[])
   PangoContext *pango_context;
   PangoFontDescription *font_description;
   PangoDirection pango_dir = PANGO_DIRECTION_LTR;
-  char *font_family = "Monospace";
-  int font_scale = 12;
   int num_pages = 1;
-  int num_columns = 1;
   int gutter_width = 40;
   int total_gutter_width;
-  paper_type_t paper_type = PAPER_TYPE_A4;
   int page_width = paper_sizes[0].width;
   int page_height = paper_sizes[0].height;
-  gboolean do_landscape = FALSE;
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
-  gboolean do_draw_header = FALSE;
-  gboolean do_justify = FALSE;
   gchar *paps_header = NULL;
-  int top_margin = 36;
-  int bottom_margin = 36;
-  int left_margin = 36;
-  int right_margin = 36;
+  gchar *header_font_desc = "Monospace Bold 12";
+  int header_sep = 20;
 
   /* Prerequisite when using glib. */
   g_type_init();
   
+  g_option_context_add_main_entries(ctxt, entries, NULL);
+  
   /* Parse command line */
-  while(argp < argc && argv[argp][0] == '-')
+  if (!g_option_context_parse(ctxt, &argc, &argv, &error))
     {
-      char *S_ = argv[argp++];
-      CASE("--help")
-        {
-          printf("paps - A postscript generating program using pango.\n"
-                 "\n"
-                 "Syntax:\n"
-                 "    paps [--landscape] [--columns cl] [--font_scale fs]\n"
-                 "         [--family f] [--rtl] [--paper type]\n"
-		 "         [--bottom-margin bm] [--top-margin tm] [--left-margin lm]\n"
-		 "         [--right-margin rm]\n"
-                 "\n"
-                 "Description:\n"
-                 "    paps reads a UTF-8 encoded file and generates a PostScript\n"
-                 "    rendering of the file. The rendering is done by creating\n"
-                 "    outline curves through the pango FT2 backend.\n"
-                 "\n"
-                 "Options:\n"
-                 "    --landscape         Landscape output. Default is portrait.\n"
-                 "    --columns cl        Number of columns output. Default is 1.\n"
-                 "    --font_scale fs     Font scaling. Default is 12.\n"
-                 "    --family f          Pango ft2 font family. Default is sans.\n"
-                 "    --rtl               Do rtl layout.\n"
-		 "    --paper ps          Choose paper size. Known paper sizes are legal, letter,\n"
-                 "                        A4. Default is A4.\n"
-		 "    --bottom-margin bm  Set bottom margin. Default is 36.\n"
-		 "    --top-margin tm     Set top margin. Default is 36.\n"
-		 "    --left-margin lm    Set left margin. Default is 36.\n"
-		 "    --right-margin rm   Set right margin. Default is 36.\n"
-
-                 );
-                 
-          exit(0);
-        }
-      CASE("--landscape") { do_landscape = TRUE; continue; }
-      CASE("--columns") { num_columns = atoi(argv[argp++]); continue; }
-      CASE("--font_scale") { font_scale = atoi(argv[argp++]); continue; }
-      CASE("--family") { font_family = argv[argp++]; continue; }
-      CASE("--rtl") { pango_dir = PANGO_DIRECTION_RTL; continue; }
-      CASE("--justify") { do_justify = TRUE; continue; }
-      CASE("--paper")
-	{
-	  char *S_ = argv[argp++];
-	  while(1) /* So that I can break */
-	    {
-	      CASE("legal") { paper_type=PAPER_TYPE_US_LEGAL; break; }
-	      CASE("letter") { paper_type=PAPER_TYPE_US_LETTER; break; }
-	      CASE("a4") { paper_type=PAPER_TYPE_A4; break; }
-	      CASE("A4") { paper_type=PAPER_TYPE_A4; break; }
-
-	      fprintf(stderr, "Unknown page size %s!\n", S_);
-	      exit(1);
-	    }
-	  continue;
-	}
-      CASE("--bottom-margin")
-	{
-	  bottom_margin = atoi(argv[argp++]); continue;
-	}
-      CASE("--top-margin")
-	{
-	  top_margin = atoi(argv[argp++]); continue;
-	}
-      CASE("--right-margin")
-	{
-	  right_margin = atoi(argv[argp++]); continue;
-	}
-      CASE("--left-margin")
-	{
-	  left_margin = atoi(argv[argp++]); continue;
-	}
-      fprintf(stderr, "Unknown option %s!\n", S_);
+      fprintf(stderr, "Command line error: %s\n", error->message);
       exit(1);
     }
-
-  if (argp < argc)
+  
+  if (do_rtl)
+    pango_dir = PANGO_DIRECTION_RTL;
+  
+  if (argc > 1)
     {
-      filename_in = argv[argp++];
+      filename_in = argv[1];
       IN = fopen(filename_in, "rb");
       if (!IN)
         {
           fprintf(stderr, "Failed to open %s!\n", filename_in);
+          exit(-1);
         }
     }
   else
@@ -267,16 +257,16 @@ int main(int argc, char *argv[])
       IN = stdin;
     }
   title = filename_in;
-
+  
   paps = paps_new();
   pango_context = paps_get_pango_context (paps);
   
   /* Setup pango */
   pango_context_set_language (pango_context, pango_language_from_string ("en_US"));
   pango_context_set_base_dir (pango_context, pango_dir);
-
+  
   font_description = pango_font_description_new ();
-  pango_font_description_set_family (font_description, g_strdup (font_family));
+  pango_font_description_set_family (font_description, g_strdup(font_family));
   pango_font_description_set_style (font_description, PANGO_STYLE_NORMAL);
   pango_font_description_set_variant (font_description, PANGO_VARIANT_NORMAL);
   pango_font_description_set_weight (font_description, PANGO_WEIGHT_NORMAL);
@@ -288,7 +278,7 @@ int main(int argc, char *argv[])
   /* Page layout */
   page_width = paper_sizes[(int)paper_type].width;
   page_height = paper_sizes[(int)paper_type].height;
-
+  
   if (num_columns == 1)
     total_gutter_width = 0;
   else
@@ -321,8 +311,10 @@ int main(int argc, char *argv[])
   page_layout.top_margin = top_margin;
   page_layout.bottom_margin = bottom_margin;
   page_layout.header_ypos = page_layout.top_margin;
+  page_layout.header_height = 0;
+  page_layout.footer_height = 0;
   if (do_draw_header)
-    page_layout.header_sep = font_scale * 2.5;
+    page_layout.header_sep =  header_sep;
   else
     page_layout.header_sep = 0;
     
@@ -341,6 +333,8 @@ int main(int argc, char *argv[])
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
+  page_layout.filename = filename_in;
+  page_layout.header_font_desc = header_font_desc;
   
   text = read_file(IN);
   paragraphs = split_text_into_paragraphs(pango_context,
@@ -355,7 +349,7 @@ int main(int argc, char *argv[])
   print_postscript_header(OUT, title, &page_layout);
   ps_pages_string = g_string_new("");
   
-  num_pages = output_pages(OUT, pango_lines, &page_layout); 
+  num_pages = output_pages(OUT, pango_lines, &page_layout, do_draw_header, pango_context);
 
   paps_header = paps_get_postscript_header_strdup(paps);
   fprintf(OUT, "%s", paps_header);
@@ -367,6 +361,7 @@ int main(int argc, char *argv[])
 
   // Cleanup
   g_string_free(ps_pages_string, TRUE);
+  g_option_context_free(ctxt);
 
   return 0;
 }
@@ -497,9 +492,12 @@ split_paragraphs_into_lines(GList *paragraphs)
   
 }
 
-int output_pages(FILE *OUT,
-                 GList *pango_lines,
-                 page_layout_t *page_layout)
+int
+output_pages(FILE          *OUT,
+             GList         *pango_lines,
+             page_layout_t *page_layout,
+             gboolean       need_header,
+             PangoContext  *pango_context)
 {
   int column_idx = 0;
   int column_y_pos = 0;
@@ -507,6 +505,9 @@ int output_pages(FILE *OUT,
   int pango_column_height = page_layout->column_height * page_layout->pt_to_pixel * PANGO_SCALE;
 
   start_page(OUT, page_idx);
+
+  if (need_header)
+    draw_page_header_line_to_page(OUT, FALSE, page_layout, pango_context, page_idx);
 
   while(pango_lines)
     {
@@ -525,12 +526,17 @@ int output_pages(FILE *OUT,
               eject_page(OUT);
               page_idx++;
               start_page(OUT, page_idx);
+
+              if (need_header)
+                draw_page_header_line_to_page(OUT, FALSE, page_layout, pango_context, page_idx);
             }
           else
-            eject_column(OUT,
-                         page_layout,
-                         column_idx
-                         );
+            {
+              eject_column(OUT,
+                           page_layout,
+                           column_idx
+                           );
+            }
         }
       draw_line_to_page(OUT,
                         column_idx,
@@ -553,6 +559,16 @@ void print_postscript_header(FILE *OUT,
   const char *orientation_names[2] = { "Portrait", "Landscape" };
   int bodytop = page_layout->header_ypos + page_layout->header_sep;
   int orientation = page_layout->page_width > page_layout->page_height;
+  int bb_page_width = page_layout->page_width;
+  int bb_page_height = page_layout->page_height;
+  
+  /* Keep bounding box non-rotated to make ggv happy */
+  if (orientation)
+    {
+      int tmp = bb_page_width;
+      bb_page_width = bb_page_height;
+      bb_page_height = tmp;
+    }
   
   fprintf(OUT,
           "%%!PS-Adobe-3.0\n"
@@ -561,9 +577,9 @@ void print_postscript_header(FILE *OUT,
           "%%%%Pages: (atend)\n"
           "%%%%BoundingBox: 0 0 %d %d\n"
           "%%%%BeginProlog\n"
-	  "%%%%Orientation: %s\n"
-	  "/papsdict 1 dict def\n"
-	  "papsdict begin\n"
+          "%%%%Orientation: %s\n"
+          "/papsdict 1 dict def\n"
+          "papsdict begin\n"
           "\n"
           "/inch {72 mul} bind def\n"
           "/mm {1 inch 25.4 div mul} bind def\n"
@@ -575,18 +591,18 @@ void print_postscript_header(FILE *OUT,
           "       3 dict begin\n"
           "         /pageheight exch def \n"
           "         /pagewidth exch def\n"
-	  "         /orientation 0 def\n"
+          "         /orientation 0 def\n"
           "         %% Exchange pagewidth and pageheight so that pagewidth is bigger\n"
           "         pagewidth pageheight gt {  \n"
           "             pagewidth\n"
           "             /pagewidth pageheight def\n"
           "             /pageheight exch def\n"
-	  "             /orientation 3 def\n"
+          "             /orientation 3 def\n"
           "         } if\n"
           "         2 dict\n"
-	  "         dup /PageSize [pagewidth pageheight] put\n"
-	  "         dup /Orientation orientation put\n"
-	  "         setpagedevice \n"
+          "         dup /PageSize [pagewidth pageheight] put\n"
+          "         dup /Orientation orientation put\n"
+          "         setpagedevice \n"
           "       end\n"
           "    } def\n"
           "}\n"
@@ -607,9 +623,9 @@ void print_postscript_header(FILE *OUT,
           "  0 pageheight neg translate\n"
           "} def\n",
           title,
-          page_layout->page_width,
-          page_layout->page_height,
-	  orientation_names[orientation]
+          bb_page_width,
+          bb_page_height,
+          orientation_names[orientation]
           );
   
   fprintf(OUT,
@@ -660,7 +676,6 @@ void print_postscript_header(FILE *OUT,
           );
   
   fprintf(OUT,
-	  "pagewidth pageheight setpagesize\n"
           "%d setnumcolumns\n",
           page_layout->num_columns);
   fprintf(OUT,
@@ -677,11 +692,11 @@ void print_postscript_header(FILE *OUT,
   // definitions should start with paps_
   fprintf(OUT,
           "/paps_bop {  %% Beginning of page definitions\n"
-	  "    papsdict begin\n"
+          "    papsdict begin\n"
           "    gsave\n"
           "    do_landscape {turnpage} if \n"
           "    firstcolumn\n"
-	  "    end\n"
+          "    end\n"
           "} def\n"
           "\n"
           "/paps_eop {  %% End of page cleanups\n"
@@ -725,8 +740,8 @@ void eject_column(FILE *OUT,
         + page_layout->column_width * column_idx
       + total_gutter;
 
-  y_top = page_layout->page_height - page_layout->top_margin;
-  y_bot = page_layout->bottom_margin;
+  y_top = page_layout->page_height - page_layout->top_margin - page_layout->header_height - page_layout->header_sep / 2;
+  y_bot = page_layout->bottom_margin - page_layout->footer_height;
 
   g_string_append_printf(ps_pages_string,
                          "%f %f moveto %f %f lineto 0 setlinewidth stroke\n",
@@ -782,18 +797,113 @@ draw_line_to_page(FILE *OUT,
                                 &logical_rect);
 
 
-
-
   if (page_layout->pango_dir == PANGO_DIRECTION_RTL) {
       x_pos += page_layout->column_width  - logical_rect.width / (page_layout->pt_to_pixel * PANGO_SCALE);
   }
 
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
-						    x_pos, y_pos,
-						    line);
+                                                    x_pos, y_pos,
+                                                    line);
 
   g_string_append(ps_pages_string,
-		  ps_layout);
+                  ps_layout);
   g_free(ps_layout);
+}
+
+int
+draw_page_header_line_to_page(FILE            *OUT,
+                              gboolean         is_footer,
+                              page_layout_t   *page_layout,
+                              PangoContext    *ctx,
+                              int              page)
+{
+  PangoLayout *layout = pango_layout_new(ctx);
+  PangoLayoutLine *line;
+  PangoRectangle ink_rect, logical_rect;
+  /* Assume square aspect ratio for now */
+  double x_pos, y_pos;
+  gchar *ps_layout, *header, date[256];
+  time_t t;
+  struct tm tm;
+  int height;
+  gdouble line_pos;
+
+  t = time(NULL);
+  tm = *localtime(&t);
+  strftime(date, 255, "%c", &tm);
+  header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
+                           "<span font_desc=\"%s\">%s</span>\n"
+                           "<span font_desc=\"%s\">Page %d</span>",
+                           page_layout->header_font_desc,
+                           date,
+                           page_layout->header_font_desc,
+                           page_layout->filename,
+                           page_layout->header_font_desc,
+                           page);
+  pango_layout_set_markup(layout, header, -1);
+  g_free(header);
+
+  /* output a left edge of header/footer */
+  line = pango_layout_get_line(layout, 0);
+  pango_layout_line_get_extents(line,
+                                &ink_rect,
+                                &logical_rect);
+  x_pos = page_layout->left_margin;
+  height = logical_rect.height / PANGO_SCALE * page_layout->pixel_to_pt/3.0;
+
+  /* The header is placed right after the margin */
+  if (is_footer)
+    {
+      y_pos = page_layout->bottom_margin;
+      page_layout->footer_height = height;
+    }
+  else
+    {
+      y_pos = page_layout->page_height - page_layout->top_margin - height;
+      page_layout->header_height = height;
+    }
+  ps_layout = paps_layout_line_to_postscript_strdup(paps,
+                                                    x_pos, y_pos,
+                                                    line);
+  g_string_append(ps_pages_string,
+                  ps_layout);
+  g_free(ps_layout);
+
+  /* output a center of header/footer */
+  line = pango_layout_get_line(layout, 1);
+  pango_layout_line_get_extents(line,
+                                &ink_rect,
+                                &logical_rect);
+  x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt)) / 2;
+  ps_layout = paps_layout_line_to_postscript_strdup(paps,
+                                                    x_pos, y_pos,
+                                                    line);
+  g_string_append(ps_pages_string,
+                  ps_layout);
+  g_free(ps_layout);
+
+  /* output a right edge of header/footer */
+  line = pango_layout_get_line(layout, 2);
+  pango_layout_line_get_extents(line,
+                                &ink_rect,
+                                &logical_rect);
+  x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt);
+  ps_layout = paps_layout_line_to_postscript_strdup(paps,
+                                                    x_pos, y_pos,
+                                                    line);
+  g_string_append(ps_pages_string,
+                  ps_layout);
+  g_free(ps_layout);
+
+  g_object_unref(layout);
+
+  /* header separator */
+  line_pos = page_layout->page_height - page_layout->top_margin - page_layout->header_height - page_layout->header_sep / 2;
+  g_string_append_printf(ps_pages_string,
+                         "%d %f moveto %d %f lineto 0 setlinewidth stroke\n",
+                         page_layout->left_margin, line_pos,
+                         page_layout->page_width - page_layout->right_margin, line_pos);
+
+  return logical_rect.height;
 }
 

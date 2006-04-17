@@ -12,7 +12,7 @@
     - \link libpaps.h libpaps.h \endlink - Libpaps API documentation
 
   \section Examples Examples
-  Here are is an example showing the use of libpango.
+  Here are is an example showing the use of libpaps.
 
   \code
 /*======================================================================

@@ -5,3 +5,4 @@
 
 * Replace command line parsing with getopts.
 
+* Add output rendering options based on my program poe.
