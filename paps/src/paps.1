@@ -1,0 +1,71 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH PAPS 1 "April  17, 2006"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+paps \- UTF-8 to PostScript converter using Pango
+.SH SYNOPSIS
+.B paps
+.RI [ options ] " files" ...
+.SH DESCRIPTION
+.B paps
+reads a UTF-8 encoded file and generates a PostScript language rendering of the file. The rendering is done by creating outline curves through the pango ft2 backend.
+.SH OPTIONS
+These programs follow the usual GNU command line syntax, with long
+options starting with two dashes (`-').
+A summary of options is included below.
+.TP
+.B \-\-landscape
+Landscape output. Default is portrait.
+.TP
+.B \-\-columns=cl
+Number of columns output. Default is 1.
+.TP
+.B \-\-fontscale=fs
+Font scaling. Default is 12.
+.TP
+.B \-\-family=f
+Pango ft2 font family. Default is Monospace.
+.TP
+.B \-\-rtl
+Do rtl layout.
+.TP
+.B \-\-paper ps
+Choose paper size. Known paper sizes are legal, letter, a4. Default is A4.
+.TP
+.B \-\-bottom-margin=bm
+Set bottom margin. Default is 36.
+.TP
+.B \-\-top-margin=tm
+Set top margin. Default is 36.
+.TP
+.B \-\-left-margin=lm
+Set left margin. Default is 36.
+.TP
+.B \-\-right-margin=rm
+Set right margin. Default is 36.
+.TP
+.B \-\-help
+Show summary of options.
+.TP
+.B \-\-header
+Draw page header for each page.
+.br
+.SH AUTHOR
+paps was written by Dov Grobgeld <dov.grobgeld@gmail.com>.
+.PP
+This manual page was written by Lior Kaplan <kaplan@debian.org>,
+for the Debian project (but may be used by others).

@@ -1,5 +1,9 @@
 2006-04-17  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
+	* src/paps.1: Fixed errors in option documentations.
+
+	* Release new version 0.6.5
+
 	* configure.in: Bumped version to 0.6.5
 
 	* src/paps.c: Made header separation independant on font scale.
