@@ -1,8 +1,18 @@
+2006-04-26  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* src/libpaps.c: Got rid of dead old crud.
+
+	* src/libpaps.c: Defined PANGO_GLYPH_EMPTY that is not exported 
+	from pango.
+
+	* src/libpaps.c: Ignore characters that FT_Load_Glyph returns an 
+	error code about.
+
 2006-04-17  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
-	* src/paps.1: Fixed errors in option documentations.
-
 	* Release new version 0.6.5
+
+	* src/paps.1: Fixed errors in option documentations.
 
 	* configure.in: Bumped version to 0.6.5
 

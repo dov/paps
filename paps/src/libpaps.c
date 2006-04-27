@@ -18,11 +18,11 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  *
- *   * Turn into a reusable library.
  */
 
 
 #include "libpaps.h"
+
 #include <pango/pango.h>
 #include <pango/pangoft2.h>
 #include <freetype/ftglyph.h>
@@ -32,6 +32,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+
+/* The following def should be provided by pango! */
+#ifndef PANGO_GLYPH_EMPTY
+#define PANGO_GLYPH_EMPTY ((PangoGlyph)0x0FFFFFFF)
+#endif
 
 // The dpi is not used as dpi but only determines the number of significant
 // digits used in the definition of the outlines. In the PostScript all
@@ -115,11 +120,6 @@ struct _OutlineInfo {
   int is_empty; // Flag for optimization 
 };
 
-static void draw_line_to_page(paps_private_t *paps,
-			      GString *line_str,
-			      double x_pos,
-			      double y_pos,
-			      PangoLayoutLine *line);
 static void draw_contour(paps_private_t *paps,
 			 GString *line_str,
 			 PangoLayoutLine *pango_line,
@@ -145,8 +145,6 @@ static int paps_ps_cubic_to( FT_Vector*  control1,
                              FT_Vector*  control2,
                              FT_Vector*  to,
                              void *user_data);
-static void get_next_char_id(// output
-                             char *char_id);
 static void get_glyph_hash_string(FT_Face face,
                                   PangoGlyphInfo *glyph_info,
                                   // output
@@ -210,8 +208,6 @@ gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
   paps_private_t *paps = (paps_private_t*)paps_;
   GString *layout_str = g_string_new("");
   gchar *ret_str;
-  int para_num_lines, line_idx;
-  double scale = 72.0 / PANGO_SCALE  / PAPS_DPI;
 
   add_line_to_postscript(paps,
 			 layout_str,
@@ -395,6 +391,9 @@ static void draw_contour(paps_private_t *paps,
 
 	  x_pos += geometry.width * scale;
 
+          if (glyphs->glyphs[glyph_idx].glyph == PANGO_GLYPH_EMPTY)
+            continue;
+
 	  draw_bezier_outline(paps,
 			      layout_str,
 			      ft_face,
@@ -423,7 +422,7 @@ void draw_bezier_outline(paps_private_t *paps,
   double scale = 72.0 / PANGO_SCALE  / PAPS_DPI;
   double epsilon = 1e-2;
   double glyph_width = glyph_info->geometry.width * scale;
-  gchar *id;
+  gchar *id = NULL;
 
   /* Output outline */
   static FT_Outline_Funcs ps_outlinefunc = 
@@ -447,59 +446,65 @@ void draw_bezier_outline(paps_private_t *paps,
     {
       FT_Int load_flags = FT_LOAD_DEFAULT;
       FT_Glyph glyph;
-      GString *glyph_def_string = g_string_new("");
+      GString *glyph_def_string;
+      FT_Error ft_ret;
 
-      // The key doesn't exist. Define the outline
-      id = get_next_char_id_strdup(paps);
+      ft_ret = FT_Load_Glyph(face, glyph_info->glyph, load_flags);
 
-      // Create the outline
-      outlinefunc = &ps_outlinefunc;
-      outline_info.glyph_origin.x = pos_x;
-      outline_info.is_empty = 1;
-      outline_info.glyph_origin.y = pos_y;
-      outline_info.out_string = glyph_def_string;
-
-      FT_Load_Glyph(face, glyph_info->glyph, load_flags);
-
-      // Sorry - No support for bitmap glyphs at the moment. :-(
-      if (face->glyph->format == FT_GLYPH_FORMAT_BITMAP)
-	  return;
-      
-      g_string_append(glyph_def_string,
-		      "start_ol\n");
-      
-      FT_Get_Glyph (face->glyph, &glyph);
-      FT_Outline_Decompose (&(((FT_OutlineGlyph)glyph)->outline),
-                            outlinefunc, &outline_info);
-      
-      g_string_append_printf(glyph_def_string,
-			     "%.0f fwd_x\n"
-			     "end_ol\n",
-			     glyph_info->geometry.width * scale * PAPS_DPI
-			     );
-
-      // TBD - Check if the glyph_def_string is empty. If so, set the
-      // id to the character to "" and don't draw it.
-      if (outline_info.is_empty
-	  || glyph_info->glyph == 0) 
-	id[0] = '*';
-      else 
-	// Put the font in the font def dictionary
-	g_string_append_printf(paps->header,
-			       "/%s { %s } def\n",
-			       id,
-			       glyph_def_string->str);
-
-      g_hash_table_insert(paps->glyph_cache,
-                          g_strdup(glyph_hash_string),
-                          id);
-
-      g_string_free(glyph_def_string, TRUE);
-      FT_Done_Glyph (glyph);
-
+      if (ft_ret != 0
+          // Sorry - No support for bitmap glyphs at the moment. :-(
+          || face->glyph->format == FT_GLYPH_FORMAT_BITMAP)
+        ;
+      else
+        {
+          glyph_def_string = g_string_new("");
+          
+          // The key doesn't exist. Define the outline
+          id = get_next_char_id_strdup(paps);
+          
+          // Create the outline
+          outlinefunc = &ps_outlinefunc;
+          outline_info.glyph_origin.x = pos_x;
+          outline_info.is_empty = 1;
+          outline_info.glyph_origin.y = pos_y;
+          outline_info.out_string = glyph_def_string;
+          
+          
+          g_string_append(glyph_def_string,
+                          "start_ol\n");
+          
+          FT_Get_Glyph (face->glyph, &glyph);
+          FT_Outline_Decompose (&(((FT_OutlineGlyph)glyph)->outline),
+                                outlinefunc, &outline_info);
+          
+          g_string_append_printf(glyph_def_string,
+                                 "%.0f fwd_x\n"
+                                 "end_ol\n",
+                                 glyph_info->geometry.width * scale * PAPS_DPI
+                                 );
+          
+          // TBD - Check if the glyph_def_string is empty. If so, set the
+          // id to the character to "" and don't draw it.
+          if (outline_info.is_empty
+              || glyph_info->glyph == 0) 
+            id[0] = '*';
+          else 
+            // Put the font in the font def dictionary
+            g_string_append_printf(paps->header,
+                                   "/%s { %s } def\n",
+                                   id,
+                                   glyph_def_string->str);
+          
+          g_hash_table_insert(paps->glyph_cache,
+                              g_strdup(glyph_hash_string),
+                              id);
+          
+          g_string_free(glyph_def_string, TRUE);
+          FT_Done_Glyph (glyph);
+        }
     }
 
-  if (id[0] != '*')
+  if (id && id[0] != '*')
     {
       glyph_width *= PAPS_DPI;
       pos_x *=PAPS_DPI;
@@ -539,9 +544,10 @@ void draw_bezier_outline(paps_private_t *paps,
 			     id
 			     );
 
-      paps->last_pos_y = pos_y;
-      paps->last_pos_x = pos_x+glyph_width; // glyph_with is added by the outline def
     }
+
+  paps->last_pos_y = pos_y;
+  paps->last_pos_x = pos_x+glyph_width; // glyph_with is added by the outline def
 }
 
 /*======================================================================
