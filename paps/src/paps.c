@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
-    {"font_scale", 0, 0, G_OPTION_ARG_INT, &font_scale, "Font scaling. (Default: 12)", "NUM"},
+    {"font-scale", 0, 0, G_OPTION_ARG_INT, &font_scale, "Font scaling. (Default: 12)", "NUM"},
     {"family", 0, 0, G_OPTION_ARG_STRING, &font_family, "Pango FT2 font family. (Default: Monospace)", "FAMILY"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify, "Do justify the lines.", NULL},
