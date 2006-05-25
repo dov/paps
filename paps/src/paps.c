@@ -418,7 +418,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
   GList *result = NULL;
   char *last_para = text;
   
-  while (*p)
+  while (p != NULL && *p)
     {
       wc = g_utf8_get_char (p);
       next = g_utf8_next_char (p);
