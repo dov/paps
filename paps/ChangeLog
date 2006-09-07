@@ -1,3 +1,9 @@
+2006-09-07  Akira TAGOH  <at@gclab.org>
+
+	* src/paps.c (split_text_into_paragraphs)
+	(split_paragraphs_into_lines, output_pages): formfeed support that is
+	originally written by Jan Willem Stumpel
+
 2006-05-25  Akira TAGOH  <at@gclab.org>
 
 	* src/paps.1: fixed a typo. (#1491827)

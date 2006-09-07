@@ -87,6 +87,7 @@ typedef struct {
   PangoLayoutLine *pango_line;
   PangoRectangle logical_rect;
   PangoRectangle ink_rect;
+  int formfeed;
 } LineLink;
 
 typedef struct _Paragraph Paragraph;
@@ -97,6 +98,7 @@ struct _Paragraph {
   char *text;
   int length;
   int height;   /* Height, in pixels */
+  int formfeed;
   PangoLayout *layout;
 };
 
@@ -427,7 +429,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
           fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
           wc = 0;
         }
-      if (!*p || !wc || wc == '\n')
+      if (!*p || !wc || wc == '\n' || wc == '\f')
         {
           Paragraph *para = g_new (Paragraph, 1);
           para->text = last_para;
@@ -440,6 +442,11 @@ split_text_into_paragraphs (PangoContext *pango_context,
                                       ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
           pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
           para->height = 0;
+
+          if (wc == '\f')
+              para->formfeed = 1;
+          else
+              para->formfeed = 0;
 
           last_para = next;
             
@@ -468,6 +475,7 @@ split_paragraphs_into_lines(GList *paragraphs)
   while(par_list)
     {
       int para_num_lines, i;
+      LineLink *line_link;
       Paragraph *para = par_list->data;
 
       para_num_lines = pango_layout_get_line_count(para->layout);
@@ -475,12 +483,15 @@ split_paragraphs_into_lines(GList *paragraphs)
       for (i=0; i<para_num_lines; i++)
         {
           PangoRectangle logical_rect, ink_rect;
-          LineLink *line_link = g_new(LineLink, 1);
           
+          line_link = g_new(LineLink, 1);
+          line_link->formfeed = 0;
           line_link->pango_line = pango_layout_get_line(para->layout, i);
           pango_layout_line_get_extents(line_link->pango_line,
                                         &ink_rect, &logical_rect);
           line_link->logical_rect = logical_rect;
+          if (para->formfeed && i == (para_num_lines - 1))
+              line_link->formfeed = 1;
           line_link->ink_rect = ink_rect;
           line_list = g_list_prepend(line_list, line_link);
         }
@@ -503,6 +514,7 @@ output_pages(FILE          *OUT,
   int column_y_pos = 0;
   int page_idx = 1;
   int pango_column_height = page_layout->column_height * page_layout->pt_to_pixel * PANGO_SCALE;
+  LineLink *prev_line_link = NULL;
 
   start_page(OUT, page_idx);
 
@@ -515,8 +527,9 @@ output_pages(FILE          *OUT,
       PangoLayoutLine *line = line_link->pango_line;
       
       /* Check if we need to move to next column */
-      if (column_y_pos + line_link->logical_rect.height
-          >= pango_column_height)
+      if ((column_y_pos + line_link->logical_rect.height
+           >= pango_column_height) ||
+          (prev_line_link && prev_line_link->formfeed))
         {
           column_idx++;
           column_y_pos = 0;
@@ -546,6 +559,7 @@ output_pages(FILE          *OUT,
       column_y_pos += line_link->logical_rect.height;
       
       pango_lines = pango_lines->next;
+      prev_line_link = line_link;
     }
   eject_page(OUT);
   return page_idx;
