@@ -27,9 +27,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #define BUFSIZE 1024
-#define HEADER_FONT_SCALE 12
+#define DEFAULT_FONT_FAMILY	"Monospace"
+#define DEFAULT_FONT_SIZE	"12"
+#define HEADER_FONT_FAMILY	"Monospace Bold"
+#define HEADER_FONT_SCALE	"12"
+#define MAKE_FONT_NAME(f,s)	f " " s
 
 typedef enum {
     PAPER_TYPE_A4 = 0,
@@ -186,15 +191,14 @@ _paps_arg_paper_cb(const char *option_name,
 int main(int argc, char *argv[])
 {
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
-  int num_columns = 1, font_scale = 12;
+  int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
-  char *font_family = "Monospace", *encoding = NULL;
+  gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
-    {"font-scale", 0, 0, G_OPTION_ARG_INT, &font_scale, "Font scaling. (Default: 12)", "NUM"},
-    {"family", 0, 0, G_OPTION_ARG_STRING, &font_family, "Pango FT2 font family. (Default: Monospace)", "FAMILY"},
+    {"font", 0, 0, G_OPTION_ARG_STRING, &font, "Set the font description. (Default: Monospace 12)", "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify, "Do justify the lines.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
@@ -209,11 +213,8 @@ int main(int argc, char *argv[])
     {NULL}
   };
   GError *error = NULL;
-  char *filename_in;
-  char *title;
   FILE *IN, *OUT = NULL;
   page_layout_t page_layout;
-  char *text;
   GList *paragraphs;
   GList *pango_lines;
   PangoContext *pango_context;
@@ -227,7 +228,8 @@ int main(int argc, char *argv[])
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
   gchar *paps_header = NULL;
-  gchar *header_font_desc = "Monospace Bold 12";
+  gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
+  gchar *filename_in, *title, *text;
   int header_sep = 20;
   GIConv cvh = NULL;
 
@@ -270,13 +272,12 @@ int main(int argc, char *argv[])
   pango_context_set_language (pango_context, pango_language_from_string ("en_US"));
   pango_context_set_base_dir (pango_context, pango_dir);
   
-  font_description = pango_font_description_new ();
-  pango_font_description_set_family (font_description, g_strdup(font_family));
-  pango_font_description_set_style (font_description, PANGO_STYLE_NORMAL);
-  pango_font_description_set_variant (font_description, PANGO_VARIANT_NORMAL);
-  pango_font_description_set_weight (font_description, PANGO_WEIGHT_NORMAL);
-  pango_font_description_set_stretch (font_description, PANGO_STRETCH_NORMAL);
-  pango_font_description_set_size (font_description, font_scale * PANGO_SCALE);
+  /* create the font description */
+  font_description = pango_font_description_from_string (font);
+  if ((pango_font_description_get_set_fields (font_description) & PANGO_FONT_MASK_FAMILY) == 0)
+    pango_font_description_set_family (font_description, DEFAULT_FONT_FAMILY);
+  if ((pango_font_description_get_set_fields (font_description) & PANGO_FONT_MASK_SIZE) == 0)
+    pango_font_description_set_size (font_description, atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE);
 
   pango_context_set_font_description (pango_context, font_description);
 
