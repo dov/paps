@@ -104,7 +104,8 @@ struct _Paragraph {
 
 /* Information passed in user data when drawing outlines */
 GList        *split_paragraphs_into_lines  (GList           *paragraphs);
-static char  *read_file                    (FILE            *file);
+static char  *read_file                    (FILE            *file,
+                                            GIConv           handle);
 static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
                                             page_layout_t   *page_layout,
                                             int              paint_width,
@@ -187,7 +188,7 @@ int main(int argc, char *argv[])
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
   int num_columns = 1, font_scale = 12;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
-  char *font_family = "Monospace";
+  char *font_family = "Monospace", *encoding = NULL;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
@@ -204,6 +205,7 @@ int main(int argc, char *argv[])
     {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin, "Set right margin. (Default: 36)", "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin, "Set left margin. (Default: 36)", "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header, "Draw page header for each page.", NULL},
+    {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding, "Assume the documentation encoding.", "ENCODING"},
     {NULL}
   };
   GError *error = NULL;
@@ -227,6 +229,7 @@ int main(int argc, char *argv[])
   gchar *paps_header = NULL;
   gchar *header_font_desc = "Monospace Bold 12";
   int header_sep = 20;
+  GIConv cvh = NULL;
 
   /* Prerequisite when using glib. */
   g_type_init();
@@ -338,7 +341,21 @@ int main(int argc, char *argv[])
   page_layout.filename = filename_in;
   page_layout.header_font_desc = header_font_desc;
   
-  text = read_file(IN);
+  if (encoding != NULL)
+    {
+      cvh = g_iconv_open ("UTF-8", encoding);
+      if (cvh == NULL)
+        {
+          fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
+          exit(-1);
+        }
+    }
+
+  text = read_file(IN, cvh);
+
+  if (encoding != NULL && cvh != NULL)
+    g_iconv_close(cvh);
+
   paragraphs = split_text_into_paragraphs(pango_context,
                                           &page_layout,
                                           page_layout.column_width * page_layout.pt_to_pixel,
@@ -372,7 +389,8 @@ int main(int argc, char *argv[])
 /* Read an entire file into a string
  */
 static char *
-read_file (FILE *file)
+read_file (FILE   *file,
+           GIConv  handle)
 {
   GString *inbuf;
   char *text;
@@ -381,7 +399,9 @@ read_file (FILE *file)
   inbuf = g_string_new (NULL);
   while (1)
     {
-      char *bp = fgets (buffer, BUFSIZE-1, file);
+      char *ib, *ob, obuffer[BUFSIZE * 6], *bp = fgets (buffer, BUFSIZE-1, file);
+      gsize iblen, oblen;
+
       if (ferror (file))
         {
           fprintf(stderr, "%s: Error reading file.\n", g_get_prgname ());
@@ -391,7 +411,20 @@ read_file (FILE *file)
       else if (bp == NULL)
         break;
 
-      g_string_append (inbuf, buffer);
+      if (handle != NULL)
+        {
+          ib = bp;
+          iblen = strlen (ib);
+          ob = bp = obuffer;
+          oblen = BUFSIZE * 6 - 1;
+          if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == -1)
+            {
+              fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
+              return NULL;
+            }
+          obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
+        }
+      g_string_append (inbuf, bp);
     }
 
   fclose (file);
