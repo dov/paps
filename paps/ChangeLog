@@ -2,7 +2,7 @@
 
 	* src/paps.c: added the missing header file.
 	(main): added --font option instead of --font-scale and --family, which
-	works like specifying PangoFontDescription.
+	works like specifying PangoFontDescription. (#1512382)
 
 	* src/paps.1: removed --font-scale and --family description and added
 	--font instead.
