@@ -22,6 +22,7 @@
 
 
 #include <pango/pango.h>
+#include <pango/pangoft2.h>
 #include "libpaps.h"
 #include <errno.h>
 #include <stdlib.h>
@@ -29,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
+#include <wchar.h>
 
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY	"Monospace"
@@ -71,6 +73,8 @@ typedef struct {
   int header_sep;
   int header_height;
   int footer_height;
+  gdouble scale_x;
+  gdouble scale_y;
   gboolean do_draw_header;
   gboolean do_draw_footer;
   gboolean do_duplex;
@@ -110,7 +114,8 @@ struct _Paragraph {
 };
 
 /* Information passed in user data when drawing outlines */
-GList        *split_paragraphs_into_lines  (GList           *paragraphs);
+GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
+					    GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             GIConv           handle);
 static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
@@ -136,6 +141,8 @@ static void   start_page                   (FILE            *OUT,
 static void   draw_line_to_page            (FILE            *OUT,
                                             int              column_idx,
                                             int              column_pos,
+					    gdouble          scale_x,
+					    gdouble          scale_y,
                                             page_layout_t   *page_layout,
                                             PangoLayoutLine *line);
 static int    draw_page_header_line_to_page(FILE            *OUT,
@@ -158,6 +165,7 @@ double last_pos_y = -1;
 double last_pos_x = -1;
 paps_t *paps;
 paper_type_t paper_type = PAPER_TYPE_A4;
+gdouble lpi = 0.0L, cpi = 0.0L;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
 
@@ -187,6 +195,60 @@ _paps_arg_paper_cb(const char *option_name,
       retval = FALSE;
     }
   
+  return retval;
+}
+
+static gboolean
+_paps_arg_lpi_cb(const gchar *option_name,
+		 const gchar *value,
+		 gpointer     data)
+{
+  gboolean retval = TRUE;
+  gchar *p = NULL;
+
+  if (value && *value)
+    {
+      errno = 0;
+      lpi = g_strtod(value, &p);
+      if ((p && *p) || errno == ERANGE)
+        {
+          fprintf(stderr, "given LPI value was invalid.\n");
+          retval = FALSE;
+        }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify the amount of lines per inch.\n");
+      retval = FALSE;
+    }
+
+  return retval;
+}
+
+static gboolean
+_paps_arg_cpi_cb(const gchar *option_name,
+		 const gchar *value,
+		 gpointer     data)
+{
+  gboolean retval = TRUE;
+  gchar *p = NULL;
+
+  if (value && *value)
+    {
+      errno = 0;
+      cpi = g_strtod(value, &p);
+      if ((p && *p) || errno == ERANGE)
+        {
+          fprintf(stderr, "given CPI value was invalid.\n");
+          retval = FALSE;
+        }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify the amount of characters per inch.\n");
+      retval = FALSE;
+    }
+
   return retval;
 }
 
@@ -233,6 +295,8 @@ int main(int argc, char *argv[])
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin, "Set left margin. (Default: 36)", "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header, "Draw page header for each page.", NULL},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding, "Assume the documentation encoding.", "ENCODING"},
+    {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb, "Set the amount of lines per inch.", "REAL"},
+    {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb, "Set the amount of characters per inch.", "REAL"},
     {NULL}
   };
   GError *error = NULL;
@@ -243,6 +307,9 @@ int main(int argc, char *argv[])
   PangoContext *pango_context;
   PangoFontDescription *font_description;
   PangoDirection pango_dir = PANGO_DIRECTION_LTR;
+  PangoFontMap *fontmap;
+  PangoFontset *fontset;
+  PangoFontMetrics *metrics;
   int num_pages = 1;
   int gutter_width = 40;
   int total_gutter_width;
@@ -254,6 +321,7 @@ int main(int argc, char *argv[])
   gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
   gchar *filename_in, *title, *text;
   int header_sep = 20;
+  int max_width = 0, w;
   GIConv cvh = NULL;
 
   /* Prerequisite when using glib. */
@@ -343,6 +411,8 @@ int main(int argc, char *argv[])
   page_layout.header_height = 0;
   page_layout.footer_height = 0;
   page_layout.do_wordwrap = do_wordwrap;
+  page_layout.scale_x = 1.0L;
+  page_layout.scale_y = 1.0L;
   if (do_draw_header)
     page_layout.header_sep =  header_sep;
   else
@@ -365,7 +435,22 @@ int main(int argc, char *argv[])
   page_layout.pango_dir = pango_dir;
   page_layout.filename = filename_in;
   page_layout.header_font_desc = header_font_desc;
-  
+
+  /* calculate x-coordinate scale */
+  if (cpi > 0.0L)
+    {
+      fontmap = pango_ft2_font_map_new ();
+      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
+      metrics = pango_fontset_get_metrics (fontset);
+      max_width = pango_font_metrics_get_approximate_char_width (metrics);
+      w = pango_font_metrics_get_approximate_digit_width (metrics);
+      if (w > max_width)
+	  max_width = w;
+      page_layout.scale_x = 1 / cpi * 72.0 * PANGO_SCALE / max_width;
+      pango_font_metrics_unref (metrics);
+      g_object_unref (G_OBJECT (fontmap));
+    }
+
   if (encoding != NULL)
     {
       cvh = g_iconv_open ("UTF-8", encoding);
@@ -385,11 +470,12 @@ int main(int argc, char *argv[])
                                           &page_layout,
                                           page_layout.column_width * page_layout.pt_to_pixel,
                                           text);
-  pango_lines = split_paragraphs_into_lines(paragraphs);
+  pango_lines = split_paragraphs_into_lines(&page_layout, paragraphs);
   
   if (OUT == NULL)
     OUT = stdout;
 
+  paps_set_scale(paps, page_layout.scale_x, page_layout.scale_y);
   print_postscript_header(OUT, title, &page_layout);
   ps_pages_string = g_string_new("");
   
@@ -493,6 +579,58 @@ split_text_into_paragraphs (PangoContext *pango_context,
           para->text = last_para;
           para->length = p - last_para;
           para->layout = pango_layout_new (pango_context);
+
+	  if (cpi > 0.0L && page_layout->do_wordwrap)
+	    {
+	      PangoRectangle ink_rect, logical_rect;
+	      wchar_t *wtext, *wnewtext;
+	      gchar *newtext;
+	      size_t i, len, wwidth = 0, n;
+
+	      wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
+	      if (wtext == NULL)
+	        {
+		  fprintf (stderr, "Failed to convert UTF-8 to UCS-4.\n");
+		  return NULL;
+		}
+
+	      len = wcswidth (wtext);
+	      /* the amount of characters to be able to put on the line against CPI */
+	      n = page_layout->column_width / 72.0 * cpi;
+	      if (len > n)
+	        {
+		  wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
+		  if (wnewtext == NULL)
+		    {
+		      fprintf (stderr, "Failed to allocate a memory.\n");
+		      g_free (wtext);
+		      return NULL;
+		    }
+		  for (i = 0; i < len; i++)
+		    {
+		      wwidth += wcwidth (wtext[i]);
+		      if (wwidth > n)
+			  break;
+		      wnewtext[i] = wtext[i];
+		    }
+		  wnewtext[i] = 0L;
+
+		  newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
+		  if (newtext == NULL)
+		    {
+		      fprintf (stderr, "Failed to convert UCS-4 to UTF-8.\n");
+		      return NULL;
+		    }
+
+		  pango_layout_set_text (para->layout, newtext, -1);
+		  pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
+		  /* update paint_width to wrap_against CPI */
+		  paint_width = logical_rect.width / PANGO_SCALE;
+		  g_free (newtext);
+		  g_free (wnewtext);
+		}
+	      g_free (wtext);
+	    }
           pango_layout_set_text (para->layout, para->text, para->length);
           pango_layout_set_justify (para->layout, page_layout->do_justify);
           pango_layout_set_alignment (para->layout,
@@ -523,9 +661,11 @@ split_text_into_paragraphs (PangoContext *pango_context,
 /* Split a list of paragraphs into a list of lines.
  */
 GList *
-split_paragraphs_into_lines(GList *paragraphs)
+split_paragraphs_into_lines(page_layout_t *page_layout,
+			    GList         *paragraphs)
 {
   GList *line_list = NULL;
+  int max_height = 0;
   /* Read the file */
 
   /* Now split all the pagraphs into lines */
@@ -554,10 +694,14 @@ split_paragraphs_into_lines(GList *paragraphs)
               line_link->formfeed = 1;
           line_link->ink_rect = ink_rect;
           line_list = g_list_prepend(line_list, line_link);
+	  if (logical_rect.height > max_height)
+	      max_height = logical_rect.height;
         }
 
       par_list = par_list->next;
     }
+  if (lpi > 0.0L)
+      page_layout->scale_y = 1 / lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE / max_height;
 
   return g_list_reverse(line_list);
   
@@ -614,9 +758,14 @@ output_pages(FILE          *OUT,
       draw_line_to_page(OUT,
                         column_idx,
                         column_y_pos+line_link->logical_rect.height,
+			page_layout->scale_x, page_layout->scale_y,
                         page_layout,
                         line);
-      column_y_pos += line_link->logical_rect.height;
+
+      if (lpi > 0.0L)
+	  column_y_pos += (1 / lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE);
+      else
+	  column_y_pos += line_link->logical_rect.height;
       
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
@@ -843,6 +992,8 @@ void
 draw_line_to_page(FILE *OUT,
                   int column_idx,
                   int column_pos,
+		  gdouble scale_x,
+		  gdouble scale_y,
                   page_layout_t *page_layout,
                   PangoLayoutLine *line)
 {
@@ -877,6 +1028,7 @@ draw_line_to_page(FILE *OUT,
 
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
+						    scale_x, scale_y,
                                                     line);
 
   g_string_append(ps_pages_string,
@@ -938,6 +1090,7 @@ draw_page_header_line_to_page(FILE            *OUT,
     }
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
+						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);
@@ -951,6 +1104,7 @@ draw_page_header_line_to_page(FILE            *OUT,
   x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt)) / 2;
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
+						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);
@@ -964,6 +1118,7 @@ draw_page_header_line_to_page(FILE            *OUT,
   x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt);
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
+						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);
@@ -980,4 +1135,3 @@ draw_page_header_line_to_page(FILE            *OUT,
 
   return logical_rect.height;
 }
-

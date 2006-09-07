@@ -40,6 +40,19 @@ paps_t *paps_new();
  */
 void paps_free(paps_t *paps);
 
+/**
+ * Set the scales for characters.
+ *
+ * @param paps Paps object
+ * @param scale_x x-coordinate scale
+ * @param scale_y y-coordinate scale
+ *
+ */
+void
+paps_set_scale(paps_t  *paps,
+	       gdouble  scale_x,
+	       gdouble  scale_y);
+
 /** 
  * libpaps may currently be used only with a PangoContext that it
  * is creating. The context returned may of course be changed though
@@ -78,6 +91,8 @@ gchar *paps_get_postscript_header_strdup(paps_t *paps);
 gchar *paps_layout_to_postscript_strdup(paps_t *paps,
 					double pos_x,
 					double pos_y,
+					double scale_x,
+					double scale_y,
 					PangoLayout *layout);
 /** 
  * Create postscript related to a single PangoLayout line at position
@@ -95,6 +110,8 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps,
 gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
 					     double pos_x,
 					     double pos_y,
+					     double scale_x,
+					     double scale_y,
 					     PangoLayoutLine *layout_line);
 
 /** 

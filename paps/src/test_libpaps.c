@@ -83,6 +83,7 @@ int main(int argc, char*argv[])
 
   ps_layout = paps_layout_to_postscript_strdup(paps,
 					       0, 0,
+					       1.0, 1.0,
 					       layout);
   g_string_append_printf(ps_text,
 			 "gsave\n"
@@ -110,6 +111,7 @@ int main(int argc, char*argv[])
 			 );
   ps_layout = paps_layout_to_postscript_strdup(paps,
 					       0, 0,
+					       1.0, 1.0,
 					       layout);
   g_string_append_printf(ps_text,
 			 "gsave\n"

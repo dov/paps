@@ -52,16 +52,20 @@ typedef struct {
   int last_char_idx;
   double last_pos_y;
   double last_pos_x;
+  double scale_x;
+  double scale_y;
 } paps_private_t;
 
 
 // Forward declarations
-static void add_postscript_prologue(GString *ps_string);
+static void add_postscript_prologue(paps_private_t *paps);
 static gchar *get_next_char_id_strdup(paps_private_t *paps);
 static void add_line_to_postscript(paps_private_t *paps,
 				   GString *line_str,
 				   double x_pos,
 				   double y_pos,
+				   double scale_x,
+				   double scale_y,
 				   PangoLayoutLine *line);
 
 paps_t *paps_new()
@@ -76,10 +80,25 @@ paps_t *paps_new()
     paps->last_pos_x = -1e67;
     paps->last_pos_y = -1e67;
     paps->last_char_idx = 0;
+    paps->scale_x = 1.0;
+    paps->scale_y = 1.0;
 
-    add_postscript_prologue(paps->header);
+    add_postscript_prologue(paps);
 
     return paps;
+}
+
+void
+paps_set_scale(paps_t  *paps_,
+	       gdouble  scale_x,
+	       gdouble  scale_y)
+{
+    paps_private_t *paps = (paps_private_t *)paps_;
+
+    paps->scale_x = scale_x;
+    paps->scale_y = scale_y;
+    g_string_erase(paps->header, 0, -1);
+    add_postscript_prologue(paps);
 }
 
 PangoContext *paps_get_pango_context()
@@ -124,14 +143,18 @@ static void draw_contour(paps_private_t *paps,
 			 GString *line_str,
 			 PangoLayoutLine *pango_line,
 			 double line_start_pos_x,
-			 double line_start_pos_y
+			 double line_start_pos_y,
+			 double scale_x,
+			 double scale_y
 			 );
 void draw_bezier_outline(paps_private_t *paps,
 			 GString *layout_str,
                          FT_Face face,
                          PangoGlyphInfo *glyph_info,
                          double pos_x,
-                         double pos_y
+                         double pos_y,
+			 double scale_x,
+			 double scale_y
                          );
 /* Countour traveling functions */
 static int paps_ps_move_to( FT_Vector* to,
@@ -166,6 +189,8 @@ static void get_glyph_hash_string(FT_Face face,
 gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 					double pos_x,
 					double pos_y,
+					double scale_x,
+					double scale_y,
 					PangoLayout *layout)
 {
   paps_private_t *paps = (paps_private_t*)paps_;
@@ -189,6 +214,8 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 			     layout_str,
 			     pos_x,
 			     pos_y,
+			     scale_x,
+			     scale_y,
 			     pango_line);
 
       pos_y -= logical_rect.height * scale;
@@ -203,6 +230,8 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
 					     double pos_x,
 					     double pos_y,
+					     double scale_x,
+					     double scale_y,
 					     PangoLayoutLine *layout_line)
 {
   paps_private_t *paps = (paps_private_t*)paps_;
@@ -213,6 +242,8 @@ gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
 			 layout_str,
 			 pos_x,
 			 pos_y,
+			 scale_x,
+			 scale_y,
 			 layout_line);
 
   ret_str = layout_str->str;
@@ -221,9 +252,10 @@ gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
   return ret_str;
 }
 
-void add_postscript_prologue(GString *ps_string)
+static void
+add_postscript_prologue(paps_private_t *paps)
 {
-  g_string_append_printf(ps_string,
+  g_string_append_printf(paps->header,
 			 "%%%%BeginProlog\n"
 			 "/papsdict 1 dict def\n"
 			 "papsdict begin\n"
@@ -231,7 +263,7 @@ void add_postscript_prologue(GString *ps_string)
 			 );
   
   /* Outline support */
-  g_string_append_printf(ps_string,
+  g_string_append_printf(paps->header,
 			 "/conicto {\n"
 			 "    /to_y exch def\n"
 			 "    /to_x exch def\n"
@@ -249,7 +281,7 @@ void add_postscript_prologue(GString *ps_string)
 			 "/start_ol { gsave } bind def\n"
 			 "/end_ol { closepath fill grestore } bind def\n"
 			 /* Specify both x and y. */
-			 "/draw_char { fontdict begin gsave %f dup scale last_x last_y translate load exec end grestore} def\n"
+			 "/draw_char { fontdict begin gsave %f dup scale last_x last_y translate %f %f scale load exec end grestore} def\n"
 			 "/goto_xy { fontdict begin /last_y exch def /last_x exch def end } def\n"
 			 "/goto_x { fontdict begin /last_x exch def end } def\n"
 			 "/fwd_x { fontdict begin /last_x exch last_x add def end } def\n"
@@ -261,14 +293,15 @@ void add_postscript_prologue(GString *ps_string)
 			 // The scaling is a combination of the scaling due
 			 // to the dpi and the difference in the coordinate
 			 // systems of postscript and freetype2.
-			 1.0 / PAPS_DPI
+			 1.0 / PAPS_DPI,
+			 paps->scale_x, paps->scale_y
 			 );
 
   // The following is a dispatcher for an encoded string that contains
   // a packed version of the pango layout data. Currently it just executes
   // the symbols corresponding to the encoded characters, but in the future
   // it will also contain some meta data, e.g. the size of the layout.
-  g_string_append_printf(ps_string,
+  g_string_append_printf(paps->header,
 			 "/paps_exec {\n"
 			 "  1 dict begin\n"
 			 "  /ps exch def\n"
@@ -320,7 +353,7 @@ void add_postscript_prologue(GString *ps_string)
 			 );
 
   /* Open up dictionaries */
-  g_string_append(ps_string,
+  g_string_append(paps->header,
 		  "/fontdict 1 dict def\n"
 		  "papsdict begin fontdict begin\n");
 }
@@ -331,6 +364,8 @@ add_line_to_postscript(paps_private_t *paps,
 		       GString *line_str,
 		       double x_pos,
 		       double y_pos,
+		       double scale_x,
+		       double scale_y,
 		       PangoLayoutLine *line)
 {
   PangoRectangle ink_rect, logical_rect;
@@ -349,7 +384,7 @@ add_line_to_postscript(paps_private_t *paps,
   }
 #endif
 
-  draw_contour(paps, line_str, line, x_pos, y_pos);
+  draw_contour(paps, line_str, line, x_pos, y_pos, scale_x, scale_y);
 }
 
 /* draw_contour() draws all of the contours that make up a line.
@@ -359,7 +394,9 @@ static void draw_contour(paps_private_t *paps,
 			 GString *layout_str,
 			 PangoLayoutLine *pango_line,
 			 double line_start_pos_x,
-			 double line_start_pos_y
+			 double line_start_pos_y,
+			 double scale_x,
+			 double scale_y
 			 )
 {
   GSList *runs_list;
@@ -389,7 +426,7 @@ static void draw_contour(paps_private_t *paps,
           glyph_pos_x = x_pos + 1.0*geometry.x_offset * scale;
           glyph_pos_y = line_start_pos_y - 1.0*geometry.y_offset * scale;
 
-	  x_pos += geometry.width * scale;
+	  x_pos += geometry.width * scale * scale_x;
 
           if (glyphs->glyphs[glyph_idx].glyph == PANGO_GLYPH_EMPTY)
             continue;
@@ -399,7 +436,9 @@ static void draw_contour(paps_private_t *paps,
 			      ft_face,
 			      &glyphs->glyphs[glyph_idx],
 			      glyph_pos_x,
-			      glyph_pos_y
+			      glyph_pos_y,
+			      scale_x,
+			      scale_y
 			      );
         }
 
@@ -415,13 +454,15 @@ void draw_bezier_outline(paps_private_t *paps,
                          FT_Face face,
                          PangoGlyphInfo *glyph_info,
                          double pos_x,
-                         double pos_y
+                         double pos_y,
+			 double scale_x,
+			 double scale_y
                          )
 {
   static gchar glyph_hash_string[100];
   double scale = 72.0 / PANGO_SCALE  / PAPS_DPI;
   double epsilon = 1e-2;
-  double glyph_width = glyph_info->geometry.width * scale;
+  double glyph_width = glyph_info->geometry.width * scale * scale_x;
   gchar *id = NULL;
 
   /* Output outline */
@@ -480,7 +521,7 @@ void draw_bezier_outline(paps_private_t *paps,
           g_string_append_printf(glyph_def_string,
                                  "%.0f fwd_x\n"
                                  "end_ol\n",
-                                 glyph_info->geometry.width * scale * PAPS_DPI
+                                 glyph_info->geometry.width * scale * scale_x * PAPS_DPI
                                  );
           
           // TBD - Check if the glyph_def_string is empty. If so, set the

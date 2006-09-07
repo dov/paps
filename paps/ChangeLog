@@ -1,5 +1,21 @@
 2006-09-07  Akira TAGOH  <at@gclab.org>
 
+	* src/paps.c (_paps_arg_lpi_cb): new function.
+	(_paps_arg_cpi_cb): new function.
+	(main): added --lpi and --cpi option. (#1472021)
+	(split_text_into_paragraphs): need to adjust the layout to avoid
+	the cutting off after scaling with LPI/CPI parameters.
+	(split_paragraphs_into_lines): figure out the scaling.
+	(output_pages): likewise.
+	(draw_line_to_page, draw_page_header_line_to_page): modified to give
+	the scaling according to LPI/CPI to libpaps.
+
+	* src/libpaps.c (paps_set_scale): new function.
+	(paps_new, paps_layout_to_postscript_strdup)
+	(paps_layout_line_to_postscript_strdup, add_postscript_prologue)
+	(add_line_to_postscript, draw_contour, draw_bezier_outline): modified
+	to output the PostScript file with any scaling.
+
 	* src/paps.c: added the missing header file.
 	(main): added --font option instead of --font-scale and --family, which
 	works like specifying PangoFontDescription. (#1512382)
