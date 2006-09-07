@@ -79,6 +79,7 @@ typedef struct {
   gboolean do_justify;
   gboolean do_separation_line;
   gboolean do_draw_contour;
+  gboolean do_wordwrap;
   PangoDirection pango_dir;
   gchar *filename;
   gchar *header_font_desc;
@@ -212,6 +213,7 @@ get_language(void)
 int main(int argc, char *argv[])
 {
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
+  gboolean do_wordwrap = TRUE;
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
   gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
@@ -340,6 +342,7 @@ int main(int argc, char *argv[])
   page_layout.header_ypos = page_layout.top_margin;
   page_layout.header_height = 0;
   page_layout.footer_height = 0;
+  page_layout.do_wordwrap = do_wordwrap;
   if (do_draw_header)
     page_layout.header_sep =  header_sep;
   else
@@ -496,6 +499,8 @@ split_text_into_paragraphs (PangoContext *pango_context,
                                       page_layout->pango_dir == PANGO_DIRECTION_LTR
                                       ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
           pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+          if (page_layout->do_wordwrap)
+              pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
           para->height = 0;
 
           if (wc == '\f')

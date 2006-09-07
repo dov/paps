@@ -5,6 +5,7 @@
 	works like specifying PangoFontDescription. (#1512382)
 	(get_language): new function.
 	(main): give a proper language to PangoContext. (#1512384)
+	(split_text_into_paragraphs): support the wordwrap from Pango. (#1512385)
 
 	* src/paps.1: removed --font-scale and --family description and added
 	--font instead.
