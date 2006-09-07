@@ -3,6 +3,8 @@
 	* src/paps.c: added the missing header file.
 	(main): added --font option instead of --font-scale and --family, which
 	works like specifying PangoFontDescription. (#1512382)
+	(get_language): new function.
+	(main): give a proper language to PangoContext. (#1512384)
 
 	* src/paps.1: removed --font-scale and --family description and added
 	--font instead.

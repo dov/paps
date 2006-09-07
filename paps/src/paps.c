@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <locale.h>
 
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY	"Monospace"
@@ -188,6 +189,26 @@ _paps_arg_paper_cb(const char *option_name,
   return retval;
 }
 
+static PangoLanguage *
+get_language(void)
+{
+  PangoLanguage *retval;
+  gchar *lang = g_strdup (setlocale (LC_CTYPE, NULL));
+  gchar *p;
+
+  p = strchr (lang, '.');
+  if (p)
+    *p = 0;
+  p = strchr (lang, '@');
+  if (p)
+    *p = 0;
+
+  retval = pango_language_from_string (lang);
+  g_free (lang);
+
+  return retval;
+}
+
 int main(int argc, char *argv[])
 {
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
@@ -269,7 +290,7 @@ int main(int argc, char *argv[])
   pango_context = paps_get_pango_context (paps);
   
   /* Setup pango */
-  pango_context_set_language (pango_context, pango_language_from_string ("en_US"));
+  pango_context_set_language (pango_context, get_language ());
   pango_context_set_base_dir (pango_context, pango_dir);
   
   /* create the font description */
