@@ -1,3 +1,41 @@
+2006-11-03  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* configure.in: Bumped version to 0.6.7
+
+	* src/paps.1: Described the new options.
+
+	* src/paps.c: 
+	
+	(split_text_into_paragraphs) Reverted to old
+	split_text_into_paragraphs as I couldn't understand Akira's code
+	and I don't think it is relevant anymore with the new cpi/lpi
+	interpretation.
+	
+        (split_text_into_paragraphs) Added functionality for using markup.
+
+        - Added option --markup for printing pango markup'd text.
+	
+	- Changed the interpretation of LPI so that it only controls the
+	line spacing and not the size of the characters.
+	
+	- Added option --stretch-chars to stretch characters to fill
+	the --lpi value.
+	
+	- Removed global variables lpi and cpi and moved them into
+	page_layout_t .
+
+	- Changed creation of options to allow passing the
+	page_layout_t as a parameter.  
+
+	- Removed all references to wchar as it is not used anymore. (It
+	shouldn't have been used in the first place as there are plenty of
+	utf8 and ucs4 manipulating function in glib.)
+		
+	* src/libpaps.c:
+	Moved the stretching of characters to c-level only. Erased the
+	scale_x and scale_y parameters from most functions.
+	
+	
 2006-09-07  Akira TAGOH  <at@gclab.org>
 
 	* src/paps.c (_paps_arg_lpi_cb): new function.

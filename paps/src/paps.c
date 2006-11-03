@@ -18,6 +18,8 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  *
+ *
+ * This is so broken, I feel like crying... :-(
  */
 
 
@@ -30,7 +32,6 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
-#include <wchar.h>
 
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY	"Monospace"
@@ -84,9 +85,13 @@ typedef struct {
   gboolean do_separation_line;
   gboolean do_draw_contour;
   gboolean do_wordwrap;
+  gboolean do_use_markup;
+  gboolean do_stretch_chars;
   PangoDirection pango_dir;
   gchar *filename;
   gchar *header_font_desc;
+  gint lpi;
+  gint cpi;
 } page_layout_t;
 
 typedef struct {
@@ -141,8 +146,6 @@ static void   start_page                   (FILE            *OUT,
 static void   draw_line_to_page            (FILE            *OUT,
                                             int              column_idx,
                                             int              column_pos,
-					    gdouble          scale_x,
-					    gdouble          scale_y,
                                             page_layout_t   *page_layout,
                                             PangoLayoutLine *line);
 static int    draw_page_header_line_to_page(FILE            *OUT,
@@ -165,7 +168,6 @@ double last_pos_y = -1;
 double last_pos_x = -1;
 paps_t *paps;
 paper_type_t paper_type = PAPER_TYPE_A4;
-gdouble lpi = 0.0L, cpi = 0.0L;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
 
@@ -205,11 +207,12 @@ _paps_arg_lpi_cb(const gchar *option_name,
 {
   gboolean retval = TRUE;
   gchar *p = NULL;
+  page_layout_t *page_layout = (page_layout_t*)data;
 
   if (value && *value)
     {
       errno = 0;
-      lpi = g_strtod(value, &p);
+      page_layout->lpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
           fprintf(stderr, "given LPI value was invalid.\n");
@@ -232,11 +235,12 @@ _paps_arg_cpi_cb(const gchar *option_name,
 {
   gboolean retval = TRUE;
   gchar *p = NULL;
-
+  page_layout_t *page_layout = (page_layout_t*)data;
+  
   if (value && *value)
     {
       errno = 0;
-      cpi = g_strtod(value, &p);
+      page_layout->cpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
           fprintf(stderr, "given CPI value was invalid.\n");
@@ -275,13 +279,18 @@ get_language(void)
 int main(int argc, char *argv[])
 {
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
-  gboolean do_wordwrap = TRUE;
+  gboolean do_stretch_chars = FALSE;
+  gboolean do_use_markup = FALSE;
+  gboolean do_wordwrap = TRUE; // What should be default?
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
   gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
+  page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
+    {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars, "Whether to stretch characters in y-direction to fill lines. (Default: no)", NULL},
+    {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup, "Should the text be considered pango markup? (Default: no)", NULL},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font, "Set the font description. (Default: Monospace 12)", "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
@@ -298,10 +307,10 @@ int main(int argc, char *argv[])
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb, "Set the amount of lines per inch.", "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb, "Set the amount of characters per inch.", "REAL"},
     {NULL}
+
   };
   GError *error = NULL;
   FILE *IN, *OUT = NULL;
-  page_layout_t page_layout;
   GList *paragraphs;
   GList *pango_lines;
   PangoContext *pango_context;
@@ -323,11 +332,20 @@ int main(int argc, char *argv[])
   int header_sep = 20;
   int max_width = 0, w;
   GIConv cvh = NULL;
+  GOptionGroup *options;
 
   /* Prerequisite when using glib. */
   g_type_init();
-  
+
+  /* Init page_layout_t parameters set by the option parsing */
+  page_layout.cpi = page_layout.lpi = 0;
+
+  options = g_option_group_new("main","","",&page_layout, NULL);
+  g_option_group_add_entries(options, entries);
+  g_option_context_set_main_group(ctxt, options);
+#if 0
   g_option_context_add_main_entries(ctxt, entries, NULL);
+#endif
   
   /* Parse command line */
   if (!g_option_context_parse(ctxt, &argc, &argv, &error))
@@ -430,6 +448,8 @@ int main(int argc, char *argv[])
   page_layout.do_separation_line = TRUE;
   page_layout.do_landscape = do_landscape;
   page_layout.do_justify = do_justify;
+  page_layout.do_stretch_chars = do_stretch_chars;
+  page_layout.do_use_markup = do_use_markup;
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
@@ -437,8 +457,9 @@ int main(int argc, char *argv[])
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
-  if (cpi > 0.0L)
+  if (page_layout.cpi > 0.0L)
     {
+      double scale;
       fontmap = pango_ft2_font_map_new ();
       fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
       metrics = pango_fontset_get_metrics (fontset);
@@ -446,10 +467,23 @@ int main(int argc, char *argv[])
       w = pango_font_metrics_get_approximate_digit_width (metrics);
       if (w > max_width)
 	  max_width = w;
-      page_layout.scale_x = 1 / cpi * 72.0 * PANGO_SCALE / max_width;
+      page_layout.scale_x = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
+
+      // Now figure out how to scale the font to get that size
+      scale = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
+
+      fprintf(stderr, "scale = %f\n", scale);
+      
+      // update the font size to that width
+      pango_font_description_set_size (font_description, (int)(atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE * scale));
+      pango_context_set_font_description (pango_context, font_description);
+      
     }
+
+  page_layout.scale_x = page_layout.scale_y = 1.0;
+      
 
   if (encoding != NULL)
     {
@@ -471,7 +505,7 @@ int main(int argc, char *argv[])
                                           page_layout.column_width * page_layout.pt_to_pixel,
                                           text);
   pango_lines = split_paragraphs_into_lines(&page_layout, paragraphs);
-  
+
   if (OUT == NULL)
     OUT = stdout;
 
@@ -550,7 +584,11 @@ read_file (FILE   *file,
   return text;
 }
 
-/* Take a UTF8 string and break it into paragraphs on \n characters
+#if 0
+/* Take a UTF8 string and break it into paragraphs on \n characters.
+ *
+ * Sorry. I couldn't figure out what this version was supposed to do
+ *
  */
 static GList *
 split_text_into_paragraphs (PangoContext *pango_context,
@@ -587,14 +625,14 @@ split_text_into_paragraphs (PangoContext *pango_context,
 	      gchar *newtext;
 	      size_t i, len, wwidth = 0, n;
 
-	      wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
+	      wtext = g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
 	      if (wtext == NULL)
 	        {
 		  fprintf (stderr, "Failed to convert UTF-8 to UCS-4.\n");
 		  return NULL;
 		}
 
-	      len = wcswidth (wtext);
+	      len = g_utf8_strlen (para->text, para->length);
 	      /* the amount of characters to be able to put on the line against CPI */
 	      n = page_layout->column_width / 72.0 * cpi;
 	      if (len > n)
@@ -657,6 +695,94 @@ split_text_into_paragraphs (PangoContext *pango_context,
 
   return g_list_reverse (result);
 }
+#endif
+
+/* Take a UTF8 string and break it into paragraphs on \n characters
+ */
+static GList *
+split_text_into_paragraphs (PangoContext *pango_context,
+                            page_layout_t *page_layout,
+                            int paint_width,  /* In pixels */
+                            char *text)
+{
+  char *p = text;
+  char *next;
+  gunichar wc;
+  GList *result = NULL;
+  char *last_para = text;
+
+  /* If we are using markup we treat the entire text as a single paragraph.
+   * I tested it and found that this is much slower than the split and
+   * assign method used below. Otherwise we might as well use this single
+   * chunk method always.
+   */
+  if (page_layout->do_use_markup)
+    {
+      Paragraph *para = g_new (Paragraph, 1);
+      para->text = text;
+      para->length = strlen(text);
+      para->layout = pango_layout_new (pango_context);
+      //          pango_layout_set_font_description (para->layout, font_description);
+      pango_layout_set_markup (para->layout, para->text, para->length);
+      pango_layout_set_justify (para->layout, page_layout->do_justify);
+      pango_layout_set_alignment (para->layout,
+                                  page_layout->pango_dir == PANGO_DIRECTION_LTR
+                                      ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
+      pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+      
+      pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+      para->height = 0;
+      
+      result = g_list_prepend (result, para);
+    }
+  else
+    {
+
+      while (p != NULL && *p)
+        {
+          wc = g_utf8_get_char (p);
+          next = g_utf8_next_char (p);
+          if (wc == (gunichar)-1)
+            {
+              fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
+              wc = 0;
+            }
+          if (!*p || !wc || wc == '\n' || wc == '\f')
+            {
+              Paragraph *para = g_new (Paragraph, 1);
+              para->text = last_para;
+              para->length = p - last_para;
+              para->layout = pango_layout_new (pango_context);
+              //          pango_layout_set_font_description (para->layout, font_description);
+              pango_layout_set_text (para->layout, para->text, para->length);
+              pango_layout_set_justify (para->layout, page_layout->do_justify);
+              pango_layout_set_alignment (para->layout,
+                                          page_layout->pango_dir == PANGO_DIRECTION_LTR
+                                          ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
+              pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+
+              pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+              para->height = 0;
+
+              last_para = next;
+            
+              if (wc == '\f')
+                para->formfeed = 1;
+              else
+                para->formfeed = 0;
+
+              result = g_list_prepend (result, para);
+            }
+          if (!wc) /* incomplete character at end */
+            break;
+          p = next;
+        }
+    }
+
+  return g_list_reverse (result);
+}
+
+
 
 /* Split a list of paragraphs into a list of lines.
  */
@@ -700,8 +826,9 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
 
       par_list = par_list->next;
     }
-  if (lpi > 0.0L)
-      page_layout->scale_y = 1 / lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE / max_height;
+  
+  if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L)
+      page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE / max_height;
 
   return g_list_reverse(line_list);
   
@@ -758,14 +885,13 @@ output_pages(FILE          *OUT,
       draw_line_to_page(OUT,
                         column_idx,
                         column_y_pos+line_link->logical_rect.height,
-			page_layout->scale_x, page_layout->scale_y,
                         page_layout,
                         line);
 
-      if (lpi > 0.0L)
-	  column_y_pos += (1 / lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE);
+      if (page_layout->lpi > 0.0L)
+        column_y_pos += (int)(1.0 / page_layout->lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE);
       else
-	  column_y_pos += line_link->logical_rect.height;
+        column_y_pos += line_link->logical_rect.height;
       
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
@@ -796,7 +922,7 @@ void print_postscript_header(FILE *OUT,
   fprintf(OUT,
           "%%!PS-Adobe-3.0\n"
           "%%%%Title: %s\n"
-          "%%%%Creator: paps version 0.6.3 by Dov Grobgeld\n"
+          "%%%%Creator: paps version 0.6.7 by Dov Grobgeld\n"
           "%%%%Pages: (atend)\n"
           "%%%%BoundingBox: 0 0 %d %d\n"
           "%%%%BeginProlog\n"
@@ -918,6 +1044,8 @@ void print_postscript_header(FILE *OUT,
           "    papsdict begin\n"
           "    gsave\n"
           "    do_landscape {turnpage} if \n"
+          "    %% ps2pdf gets wrong orientation without this!\n"
+          "    /Helvetica findfont setfont 100 100 moveto ( ) show\n"
           "    firstcolumn\n"
           "    end\n"
           "} def\n"
@@ -957,7 +1085,7 @@ void eject_column(FILE *OUT,
   if (column_idx == 1)
     total_gutter = 1.0 * page_layout->gutter_width /2;
   else
-    total_gutter = (column_idx + 1.5) * page_layout->gutter_width;
+    total_gutter = (column_idx - 0.5) * page_layout->gutter_width;
       
   x_pos = page_layout->left_margin
         + page_layout->column_width * column_idx
@@ -992,8 +1120,6 @@ void
 draw_line_to_page(FILE *OUT,
                   int column_idx,
                   int column_pos,
-		  gdouble scale_x,
-		  gdouble scale_y,
                   page_layout_t *page_layout,
                   PangoLayoutLine *line)
 {
@@ -1026,9 +1152,9 @@ draw_line_to_page(FILE *OUT,
       x_pos += page_layout->column_width  - logical_rect.width / (page_layout->pt_to_pixel * PANGO_SCALE);
   }
 
+  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
-						    scale_x, scale_y,
                                                     line);
 
   g_string_append(ps_pages_string,
@@ -1088,9 +1214,9 @@ draw_page_header_line_to_page(FILE            *OUT,
       y_pos = page_layout->page_height - page_layout->top_margin - height;
       page_layout->header_height = height;
     }
+  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
-						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);
@@ -1102,9 +1228,9 @@ draw_page_header_line_to_page(FILE            *OUT,
                                 &ink_rect,
                                 &logical_rect);
   x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt)) / 2;
+  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
-						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);
@@ -1116,9 +1242,9 @@ draw_page_header_line_to_page(FILE            *OUT,
                                 &ink_rect,
                                 &logical_rect);
   x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt);
+  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
   ps_layout = paps_layout_line_to_postscript_strdup(paps,
                                                     x_pos, y_pos,
-						    page_layout->scale_x, page_layout->scale_y,
                                                     line);
   g_string_append(ps_pages_string,
                   ps_layout);

@@ -64,8 +64,6 @@ static void add_line_to_postscript(paps_private_t *paps,
 				   GString *line_str,
 				   double x_pos,
 				   double y_pos,
-				   double scale_x,
-				   double scale_y,
 				   PangoLayoutLine *line);
 
 paps_t *paps_new()
@@ -97,8 +95,11 @@ paps_set_scale(paps_t  *paps_,
 
     paps->scale_x = scale_x;
     paps->scale_y = scale_y;
+#if 0
+    // Why would you want to do such a thing???
     g_string_erase(paps->header, 0, -1);
     add_postscript_prologue(paps);
+#endif
 }
 
 PangoContext *paps_get_pango_context()
@@ -133,6 +134,7 @@ typedef struct {
 /* Information passed in user data when drawing outlines */
 typedef struct _OutlineInfo OutlineInfo;
 struct _OutlineInfo {
+  paps_private_t *paps;
   GString *out_string;
   FT_Vector glyph_origin;
   int dpi;
@@ -143,18 +145,14 @@ static void draw_contour(paps_private_t *paps,
 			 GString *line_str,
 			 PangoLayoutLine *pango_line,
 			 double line_start_pos_x,
-			 double line_start_pos_y,
-			 double scale_x,
-			 double scale_y
+			 double line_start_pos_y
 			 );
 void draw_bezier_outline(paps_private_t *paps,
 			 GString *layout_str,
                          FT_Face face,
                          PangoGlyphInfo *glyph_info,
                          double pos_x,
-                         double pos_y,
-			 double scale_x,
-			 double scale_y
+                         double pos_y
                          );
 /* Countour traveling functions */
 static int paps_ps_move_to( FT_Vector* to,
@@ -189,8 +187,6 @@ static void get_glyph_hash_string(FT_Face face,
 gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 					double pos_x,
 					double pos_y,
-					double scale_x,
-					double scale_y,
 					PangoLayout *layout)
 {
   paps_private_t *paps = (paps_private_t*)paps_;
@@ -214,8 +210,6 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 			     layout_str,
 			     pos_x,
 			     pos_y,
-			     scale_x,
-			     scale_y,
 			     pango_line);
 
       pos_y -= logical_rect.height * scale;
@@ -230,8 +224,6 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps_,
 gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
 					     double pos_x,
 					     double pos_y,
-					     double scale_x,
-					     double scale_y,
 					     PangoLayoutLine *layout_line)
 {
   paps_private_t *paps = (paps_private_t*)paps_;
@@ -242,8 +234,6 @@ gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
 			 layout_str,
 			 pos_x,
 			 pos_y,
-			 scale_x,
-			 scale_y,
 			 layout_line);
 
   ret_str = layout_str->str;
@@ -281,7 +271,7 @@ add_postscript_prologue(paps_private_t *paps)
 			 "/start_ol { gsave } bind def\n"
 			 "/end_ol { closepath fill grestore } bind def\n"
 			 /* Specify both x and y. */
-			 "/draw_char { fontdict begin gsave %f dup scale last_x last_y translate %f %f scale load exec end grestore} def\n"
+			 "/draw_char { fontdict begin gsave %f dup scale last_x last_y translate load exec end grestore} def\n"
 			 "/goto_xy { fontdict begin /last_y exch def /last_x exch def end } def\n"
 			 "/goto_x { fontdict begin /last_x exch def end } def\n"
 			 "/fwd_x { fontdict begin /last_x exch last_x add def end } def\n"
@@ -293,8 +283,7 @@ add_postscript_prologue(paps_private_t *paps)
 			 // The scaling is a combination of the scaling due
 			 // to the dpi and the difference in the coordinate
 			 // systems of postscript and freetype2.
-			 1.0 / PAPS_DPI,
-			 paps->scale_x, paps->scale_y
+			 1.0 / PAPS_DPI
 			 );
 
   // The following is a dispatcher for an encoded string that contains
@@ -364,8 +353,6 @@ add_line_to_postscript(paps_private_t *paps,
 		       GString *line_str,
 		       double x_pos,
 		       double y_pos,
-		       double scale_x,
-		       double scale_y,
 		       PangoLayoutLine *line)
 {
   PangoRectangle ink_rect, logical_rect;
@@ -384,7 +371,7 @@ add_line_to_postscript(paps_private_t *paps,
   }
 #endif
 
-  draw_contour(paps, line_str, line, x_pos, y_pos, scale_x, scale_y);
+  draw_contour(paps, line_str, line, x_pos, y_pos);
 }
 
 /* draw_contour() draws all of the contours that make up a line.
@@ -394,9 +381,7 @@ static void draw_contour(paps_private_t *paps,
 			 GString *layout_str,
 			 PangoLayoutLine *pango_line,
 			 double line_start_pos_x,
-			 double line_start_pos_y,
-			 double scale_x,
-			 double scale_y
+			 double line_start_pos_y
 			 )
 {
   GSList *runs_list;
@@ -426,7 +411,7 @@ static void draw_contour(paps_private_t *paps,
           glyph_pos_x = x_pos + 1.0*geometry.x_offset * scale;
           glyph_pos_y = line_start_pos_y - 1.0*geometry.y_offset * scale;
 
-	  x_pos += geometry.width * scale * scale_x;
+	  x_pos += geometry.width * scale * paps->scale_x;
 
           if (glyphs->glyphs[glyph_idx].glyph == PANGO_GLYPH_EMPTY)
             continue;
@@ -436,10 +421,7 @@ static void draw_contour(paps_private_t *paps,
 			      ft_face,
 			      &glyphs->glyphs[glyph_idx],
 			      glyph_pos_x,
-			      glyph_pos_y,
-			      scale_x,
-			      scale_y
-			      );
+			      glyph_pos_y);
         }
 
       runs_list = runs_list->next;
@@ -454,15 +436,12 @@ void draw_bezier_outline(paps_private_t *paps,
                          FT_Face face,
                          PangoGlyphInfo *glyph_info,
                          double pos_x,
-                         double pos_y,
-			 double scale_x,
-			 double scale_y
-                         )
+                         double pos_y)
 {
   static gchar glyph_hash_string[100];
   double scale = 72.0 / PANGO_SCALE  / PAPS_DPI;
   double epsilon = 1e-2;
-  double glyph_width = glyph_info->geometry.width * scale * scale_x;
+  double glyph_width = glyph_info->geometry.width * scale * paps->scale_x;
   gchar *id = NULL;
 
   /* Output outline */
@@ -505,6 +484,7 @@ void draw_bezier_outline(paps_private_t *paps,
           
           // Create the outline
           outlinefunc = &ps_outlinefunc;
+          outline_info.paps = paps;
           outline_info.glyph_origin.x = pos_x;
           outline_info.is_empty = 1;
           outline_info.glyph_origin.y = pos_y;
@@ -521,7 +501,7 @@ void draw_bezier_outline(paps_private_t *paps,
           g_string_append_printf(glyph_def_string,
                                  "%.0f fwd_x\n"
                                  "end_ol\n",
-                                 glyph_info->geometry.width * scale * scale_x * PAPS_DPI
+                                 glyph_info->geometry.width * scale * paps->scale_x * PAPS_DPI
                                  );
           
           // TBD - Check if the glyph_def_string is empty. If so, set the
@@ -529,7 +509,7 @@ void draw_bezier_outline(paps_private_t *paps,
           if (outline_info.is_empty
               || glyph_info->glyph == 0) 
             id[0] = '*';
-          else 
+          else
             // Put the font in the font def dictionary
             g_string_append_printf(paps->header,
                                    "/%s { %s } def\n",
@@ -600,8 +580,8 @@ static int paps_ps_move_to( FT_Vector* to,
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
   g_string_append_printf(outline_info->out_string,
                          "%d %d m\n",
-                         (int)(to->x * FT2PS) ,
-                         (int)(to->y * FT2PS ));
+                         (int)(to->x * FT2PS*outline_info->paps->scale_x) ,
+                         (int)(to->y * FT2PS*outline_info->paps->scale_y ));
   return 0;
 }
 
@@ -611,8 +591,8 @@ static int paps_ps_line_to( FT_Vector*  to,
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
   g_string_append_printf(outline_info->out_string,
                          "%d %d l\n",
-                         (int)(to->x * FT2PS) ,
-                         (int)(to->y * FT2PS) );
+                         (int)(to->x * FT2PS * outline_info->paps->scale_x) ,
+                         (int)(to->y * FT2PS * outline_info->paps->scale_y) );
   outline_info->is_empty = 0;
   return 0;
 }
@@ -624,10 +604,10 @@ static int paps_ps_conic_to( FT_Vector*  control,
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
   g_string_append_printf(outline_info->out_string,
                          "%d %d %d %d x\n",
-                         (int)(control->x * FT2PS)  ,
-                         (int)(control->y * FT2PS) ,
-                         (int)(to->x * FT2PS),
-                         (int)(to->y * FT2PS));
+                         (int)(control->x * FT2PS*outline_info->paps->scale_x)  ,
+                         (int)(control->y * FT2PS*outline_info->paps->scale_y) ,
+                         (int)(to->x * FT2PS*outline_info->paps->scale_x),
+                         (int)(to->y * FT2PS*outline_info->paps->scale_y));
   outline_info->is_empty = 0;
   return 0;
 }
@@ -640,12 +620,12 @@ static int paps_ps_cubic_to( FT_Vector*  control1,
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
   g_string_append_printf(outline_info->out_string,
                          "%d %d %d %d %d %d c\n",
-                         (int)(control1->x * FT2PS) , 
-                         (int)(control1->y * FT2PS) ,
-                         (int)(control2->x * FT2PS) ,
-                         (int)(control2->y * FT2PS) ,
-                         (int)(to->x * FT2PS) ,
-                         (int)(to->y * FT2PS) );
+                         (int)(control1->x * FT2PS*outline_info->paps->scale_x) , 
+                         (int)(control1->y * FT2PS*outline_info->paps->scale_y) ,
+                         (int)(control2->x * FT2PS*outline_info->paps->scale_x) ,
+                         (int)(control2->y * FT2PS*outline_info->paps->scale_y) ,
+                         (int)(to->x * FT2PS*outline_info->paps->scale_x) ,
+                         (int)(to->y * FT2PS*outline_info->paps->scale_y) );
   outline_info->is_empty = 0;
   return 0;
 }
