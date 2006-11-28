@@ -22,6 +22,11 @@
 #include <glib.h>
 #include <pango/pango.h>
 
+/**
+ * The paps handle taht is used in all interactions with the paps
+ * library.
+ * 
+ */
 typedef void paps_t;
 
 /** 
@@ -105,7 +110,7 @@ gchar *paps_layout_to_postscript_strdup(paps_t *paps,
  * 
  * @return 
  */
-gchar *paps_layout_line_to_postscript_strdup(paps_t *paps_,
+gchar *paps_layout_line_to_postscript_strdup(paps_t *paps,
 					     double pos_x,
 					     double pos_y,
 					     PangoLayoutLine *layout_line);

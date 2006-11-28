@@ -1,3 +1,14 @@
+2006-11-28  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* libpaps.h: Minor doxygen warning fixes.
+
+	* doc/Doxyfile, doc/Makefile.am: Removed for new doxygen support.
+
+	* aminclude.am, acinclude.m4 : Added for doxygen support
+
+	* configure.in: Made doxygen documentation build at autoconf time
+	(package preparer) and not at user configuration time.
+
 2006-11-03  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* configure.in: Bumped version to 0.6.7
