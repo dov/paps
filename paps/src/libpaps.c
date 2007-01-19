@@ -155,16 +155,16 @@ void draw_bezier_outline(paps_private_t *paps,
                          double pos_y
                          );
 /* Countour traveling functions */
-static int paps_ps_move_to( FT_Vector* to,
+static int paps_ps_move_to( const FT_Vector* to,
                             void *user_data);
-static int paps_ps_line_to( FT_Vector*  to,
+static int paps_ps_line_to( const FT_Vector*  to,
                             void *user_data);
-static int paps_ps_conic_to( FT_Vector*  control,
-                             FT_Vector*  to,
+static int paps_ps_conic_to( const FT_Vector*  control,
+                             const FT_Vector*  to,
                              void *user_data);
-static int paps_ps_cubic_to( FT_Vector*  control1,
-                             FT_Vector*  control2,
-                             FT_Vector*  to,
+static int paps_ps_cubic_to( const FT_Vector*  control1,
+                             const FT_Vector*  control2,
+                             const FT_Vector*  to,
                              void *user_data);
 static void get_glyph_hash_string(FT_Face face,
                                   PangoGlyphInfo *glyph_info,
@@ -447,10 +447,10 @@ void draw_bezier_outline(paps_private_t *paps,
   /* Output outline */
   static FT_Outline_Funcs ps_outlinefunc = 
     {
-      paps_ps_move_to,
-      paps_ps_line_to,
-      paps_ps_conic_to,
-      paps_ps_cubic_to
+      (FT_Outline_MoveToFunc)paps_ps_move_to,
+      (FT_Outline_LineToFunc )paps_ps_line_to,
+      (FT_Outline_ConicToFunc)paps_ps_conic_to,
+      (FT_Outline_CubicToFunc)paps_ps_cubic_to
     };
   FT_Outline_Funcs *outlinefunc;
   OutlineInfo outline_info;
@@ -574,7 +574,7 @@ void draw_bezier_outline(paps_private_t *paps,
 /*======================================================================
 //  outline traversing functions.
 //----------------------------------------------------------------------*/
-static int paps_ps_move_to( FT_Vector* to,
+static int paps_ps_move_to( const FT_Vector* to,
                             void *user_data)
 {
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
@@ -585,7 +585,7 @@ static int paps_ps_move_to( FT_Vector* to,
   return 0;
 }
 
-static int paps_ps_line_to( FT_Vector*  to,
+static int paps_ps_line_to( const FT_Vector*  to,
                             void *user_data)
 {
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
@@ -597,8 +597,8 @@ static int paps_ps_line_to( FT_Vector*  to,
   return 0;
 }
 
-static int paps_ps_conic_to( FT_Vector*  control,
-                             FT_Vector*  to,
+static int paps_ps_conic_to( const FT_Vector*  control,
+                             const FT_Vector*  to,
                              void *user_data)
 {
   OutlineInfo *outline_info = (OutlineInfo*)user_data;
@@ -612,9 +612,9 @@ static int paps_ps_conic_to( FT_Vector*  control,
   return 0;
 }
 
-static int paps_ps_cubic_to( FT_Vector*  control1,
-                             FT_Vector*  control2,
-                             FT_Vector*  to,
+static int paps_ps_cubic_to( const FT_Vector*  control1,
+                             const FT_Vector*  control2,
+                             const FT_Vector*  to,
                              void *user_data)
 {
   OutlineInfo *outline_info = (OutlineInfo*)user_data;

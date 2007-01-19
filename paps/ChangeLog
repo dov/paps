@@ -1,3 +1,17 @@
+2007-01-19  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* configure.in: Bumped version to 0.6.8
+
+	* src/libpaps.c: Removed warnings.
+
+	* src/paps.c: Added --help info about units.
+
+	* src/paps.1: Added info about units.
+
+2006-12-07  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* paps.1: Fixed bug in documentation of the --markup option.
+
 2006-11-28  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* libpaps.h: Minor doxygen warning fixes.
@@ -89,6 +103,12 @@
 
 	* src/paps.c (split_text_into_paragraphs): fixed a possible segfault
 	issue.
+
+2006-05-03  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+	* Release new version 0.6.6
+	
+	* src/paps.c: Added #include <time.h> to fix compilation errors.
 
 2006-04-26  Dov Grobgeld  <dov.grobgeld@gmail.com>
 

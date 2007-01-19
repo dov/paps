@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
      "                          letter, a4. (Default: a4)", "PAPER"},
-    {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin, "Set bottom margin. (Default: 36)", "NUM"},
+    {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin, "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin, "Set top margin. (Default: 36)", "NUM"},
     {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin, "Set right margin. (Default: 36)", "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin, "Set left margin. (Default: 36)", "NUM"},
@@ -472,8 +472,6 @@ int main(int argc, char *argv[])
       // Now figure out how to scale the font to get that size
       scale = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
 
-      fprintf(stderr, "scale = %f\n", scale);
-      
       // update the font size to that width
       pango_font_description_set_size (font_description, (int)(atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE * scale));
       pango_context_set_font_description (pango_context, font_description);
