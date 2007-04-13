@@ -292,7 +292,6 @@ int main(int argc, char *argv[])
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font, "Set the font description. (Default: Monospace 12)", "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
-    {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify, "Do justify the lines.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
      "                          letter, a4. (Default: a4)", "PAPER"},
