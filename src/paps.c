@@ -559,7 +559,8 @@ int main(int argc, char *argv[])
   /* calculate x-coordinate scale */
   if (page_layout.cpi > 0.0L)
     {
-      double scale;
+      gint font_size;
+
       fontmap = pango_ft2_font_map_new ();
       fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
       metrics = pango_fontset_get_metrics (fontset);
@@ -571,13 +572,10 @@ int main(int argc, char *argv[])
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
 
-      // Now figure out how to scale the font to get that size
-      scale = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
-
+      font_size = pango_font_description_get_size (font_description);
       // update the font size to that width
-      pango_font_description_set_size (font_description, (int)(atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE * scale));
+      pango_font_description_set_size (font_description, font_size * page_layout.scale_x);
       pango_context_set_font_description (pango_context, font_description);
-      
     }
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
@@ -838,6 +836,7 @@ output_pages(cairo_surface_t *surface,
   int column_y_pos = 0;
   int page_idx = 1;
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
+  int height = 0;
   LineLink *prev_line_link = NULL;
 
   start_page(surface, cr, page_layout, page_idx);
@@ -875,17 +874,16 @@ output_pages(cairo_surface_t *surface,
                            );
             }
         }
+      if (page_layout->lpi > 0.0L)
+	height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+      else
+	height = line_link->logical_rect.height;
       draw_line_to_page(cr,
                         column_idx,
-                        column_y_pos+line_link->logical_rect.height,
+                        column_y_pos+height,
                         page_layout,
                         line);
-
-      if (page_layout->lpi > 0.0L)
-        column_y_pos += (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
-      else
-        column_y_pos += line_link->logical_rect.height;
-      
+      column_y_pos += height;
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
     }
