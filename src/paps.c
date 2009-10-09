@@ -29,6 +29,7 @@
 #include <cairo/cairo-pdf.h>
 #include <cairo/cairo-svg.h>
 #include <errno.h>
+#include <langinfo.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -393,6 +394,9 @@ int main(int argc, char *argv[])
   cairo_surface_t *surface = NULL;
   double surface_page_width = 0, surface_page_height = 0;
 
+  /* Set locale from environment */
+  setlocale(LC_ALL, "");
+  
   /* Init page_layout_t parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0;
 
@@ -579,6 +583,15 @@ int main(int argc, char *argv[])
   page_layout.scale_x = page_layout.scale_y = 1.0;
       
 
+  if (encoding == NULL)
+    {
+      encoding = g_strdup(nl_langinfo(CODESET));
+      if (!strcmp(encoding, "UTF-8"))
+	{
+	  g_free(encoding);
+	  encoding = NULL;
+	}
+    }
   if (encoding != NULL)
     {
       cvh = g_iconv_open ("UTF-8", encoding);
