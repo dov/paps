@@ -700,9 +700,12 @@ split_text_into_paragraphs (cairo_t *cr,
       pango_layout_set_alignment (para->layout,
                                   page_layout->pango_dir == PANGO_DIRECTION_LTR
                                       ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-      pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
-      
-      pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+      if (page_layout->do_wordwrap) {
+        pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+        pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+      } else {
+        pango_layout_set_width (para->layout, -1);
+      }
       para->height = 0;
       
       result = g_list_prepend (result, para);
@@ -731,9 +734,13 @@ split_text_into_paragraphs (cairo_t *cr,
               pango_layout_set_alignment (para->layout,
                                           page_layout->pango_dir == PANGO_DIRECTION_LTR
                                           ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-              pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+              if (page_layout->do_wordwrap) {
+                pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+                pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+              } else {
+                pango_layout_set_width (para->layout, -1);
+              }
 
-              pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
               para->height = 0;
 
               last_para = next;
