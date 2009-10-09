@@ -427,7 +427,7 @@ int main(int argc, char *argv[])
       if (!IN)
         {
           fprintf(stderr, "Failed to open %s!\n", filename_in);
-          exit(-1);
+          exit(1);
         }
     }
   else
@@ -445,7 +445,7 @@ int main(int argc, char *argv[])
       if (!output_fh)
         {
           fprintf(stderr, "Failed to open %s for writing!\n", output);
-          exit(-1);
+          exit(1);
         }
     }
 
@@ -598,7 +598,7 @@ int main(int argc, char *argv[])
       if (cvh == NULL)
         {
           fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
-          exit(-1);
+          exit(1);
         }
     }
 
@@ -647,7 +647,7 @@ read_file (FILE   *file,
         {
           fprintf(stderr, "%s: Error reading file.\n", g_get_prgname ());
           g_string_free (inbuf, TRUE);
-          return NULL;
+	  exit(1);
         }
       else if (bp == NULL)
         break;
@@ -661,7 +661,7 @@ read_file (FILE   *file,
           if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == -1)
             {
               fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
-              return NULL;
+	      exit(1);
             }
           obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
         }
