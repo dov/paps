@@ -1,11 +1,7 @@
-env = Environment()
-env.ParseConfig('pkg-config --cflags --libs pangoft2')
-
-env.Library('paps',
-            ['libpaps.c'])
+env = Environment(CFLAGS=['-Wall','-g'])
+env.ParseConfig('pkg-config --cflags --libs pangocairo pangoft2')
 
 env.Program('paps',
             ['paps.c'],
-            LIBPATH = ['.'],
-            LIBS=['paps'] + env['LIBS'])
+            env['LIBS'])
             

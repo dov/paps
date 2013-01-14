@@ -23,13 +23,16 @@
 
 #include <pango/pango.h>
 #include <pango/pangoft2.h>
-#include "libpaps.h"
+#include <pango/pangocairo.h>
+#include <cairo/cairo.h>
+#include <cairo/cairo-ps.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <locale.h>
+#include <math.h>
 
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY	"Monospace"
@@ -56,8 +59,6 @@ const paper_size_t paper_sizes[] = {
 };
 
 typedef struct {
-  double pt_to_pixel;
-  double pixel_to_pt;
   int column_width;
   int column_height;
   int num_columns;
@@ -109,7 +110,7 @@ typedef struct _Paragraph Paragraph;
 /* Structure representing a paragraph
  */
 struct _Paragraph {
-  char *text;
+  const char *text;
   int length;
   int height;   /* Height, in pixels */
   int formfeed;
@@ -121,50 +122,40 @@ GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
 					    GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             GIConv           handle);
-static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
+static GList *split_text_into_paragraphs   (cairo_t *cr,
+                                            PangoContext    *pango_context,
                                             page_layout_t   *page_layout,
                                             int              paint_width,
-                                            char            *text);
-static int    output_pages                 (FILE            *OUT,
+                                            const char      *text);
+static int    output_pages                 (cairo_surface_t * surface,
+                                            cairo_t         *cr,
                                             GList           *pango_lines,
                                             page_layout_t   *page_layout,
                                             gboolean         need_header,
                                             PangoContext    *pango_context);
-static void   print_postscript_header      (FILE            *OUT,
-                                            const char      *title,
-                                            page_layout_t   *page_layout);
-static void   print_postscript_trailer     (FILE            *OUT,
-                                            int              num_pages);
-static void   eject_column                 (FILE            *OUT,
+static void   eject_column                 (cairo_t         *cr,
                                             page_layout_t   *page_layout,
                                             int              column_idx);
-static void   eject_page                   (FILE            *OUT);
-static void   start_page                   (FILE            *OUT,
+static void   eject_page                   (cairo_t         *cr);
+static void   start_page                   (cairo_surface_t *surface,
+                                            cairo_t         *cr, 
+                                            page_layout_t   *page_layout,
                                             int              page_idx);
-static void   draw_line_to_page            (FILE            *OUT,
+static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
                                             page_layout_t   *page_layout,
                                             PangoLayoutLine *line);
-static int    draw_page_header_line_to_page(FILE            *OUT,
+static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             gboolean         is_footer,
                                             page_layout_t   *page_layout,
                                             PangoContext    *ctx,
                                             int              page);
 
-// Fonts are three character symbols in an alphabet composing of
-// the following characters:
-//
-//   First character:  a-zA-Z@_.,!-~`'"
-//   Rest of chars:    like first + 0-9
-//
-// Care is taken that no keywords are overwritten, e.g. def, end.
-GString *ps_font_def_string = NULL;
-GString *ps_pages_string = NULL;
 int last_char_idx = 0;
 double last_pos_y = -1;
 double last_pos_x = -1;
-paps_t *paps;
+FILE *output_fh;
 paper_type_t paper_type = PAPER_TYPE_A4;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
@@ -274,6 +265,14 @@ get_language(void)
   return retval;
 }
 
+static cairo_status_t paps_cairo_write_func(void *closure,
+                                            const unsigned char *data,
+                                            unsigned int length)
+{
+  fwrite(data,length,1,output_fh);
+  return CAIRO_STATUS_SUCCESS;
+}
+
 int main(int argc, char *argv[])
 {
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
@@ -282,6 +281,7 @@ int main(int argc, char *argv[])
   gboolean do_wordwrap = TRUE; // What should be default?
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
+  gboolean do_fatal_warnings = FALSE;
   gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
@@ -303,11 +303,13 @@ int main(int argc, char *argv[])
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding, "Assume the documentation encoding.", "ENCODING"},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb, "Set the amount of lines per inch.", "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb, "Set the amount of characters per inch.", "REAL"},
+    {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings, "Set glib fatal warnings", "REAL"},
+    
     {NULL}
 
   };
   GError *error = NULL;
-  FILE *IN, *OUT = NULL;
+  FILE *IN = NULL;
   GList *paragraphs;
   GList *pango_lines;
   PangoContext *pango_context;
@@ -316,20 +318,19 @@ int main(int argc, char *argv[])
   PangoFontMap *fontmap;
   PangoFontset *fontset;
   PangoFontMetrics *metrics;
-  int num_pages = 1;
   int gutter_width = 40;
   int total_gutter_width;
   int page_width = paper_sizes[0].width;
   int page_height = paper_sizes[0].height;
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
-  gchar *paps_header = NULL;
   gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
-  gchar *filename_in, *title, *text;
+  gchar *filename_in, *text;
   int header_sep = 20;
   int max_width = 0, w;
   GIConv cvh = NULL;
   GOptionGroup *options;
+  cairo_t *cr;
 
   /* Prerequisite when using glib. */
   g_type_init();
@@ -351,6 +352,9 @@ int main(int argc, char *argv[])
       exit(1);
     }
   
+  if (do_fatal_warnings)
+    g_log_set_always_fatal(G_LOG_LEVEL_MASK);
+
   if (do_rtl)
     pango_dir = PANGO_DIRECTION_RTL;
   
@@ -369,10 +373,16 @@ int main(int argc, char *argv[])
       filename_in = "stdin";
       IN = stdin;
     }
-  title = filename_in;
+
+  // For now always write to stdout
+  output_fh = stdout;
+
+  cairo_surface_t *surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
+                                                                NULL,
+                                                                page_width, page_height);
+  cr = cairo_create(surface);
   
-  paps = paps_new();
-  pango_context = paps_get_pango_context (paps);
+  pango_context = pango_cairo_create_context(cr);
   
   /* Setup pango */
   pango_context_set_language (pango_context, get_language ());
@@ -440,8 +450,6 @@ int main(int argc, char *argv[])
   page_layout.column_width =  (page_layout.page_width 
                             - page_layout.left_margin - page_layout.right_margin
                             - total_gutter_width) / page_layout.num_columns;
-  page_layout.pt_to_pixel = paps_postscript_points_to_pango(1)/PANGO_SCALE;
-  page_layout.pixel_to_pt = 1.0/page_layout.pt_to_pixel;
   page_layout.do_separation_line = TRUE;
   page_layout.do_landscape = do_landscape;
   page_layout.do_justify = do_justify;
@@ -495,31 +503,20 @@ int main(int argc, char *argv[])
   if (encoding != NULL && cvh != NULL)
     g_iconv_close(cvh);
 
-  paragraphs = split_text_into_paragraphs(pango_context,
+  paragraphs = split_text_into_paragraphs(cr,
+                                          pango_context,
                                           &page_layout,
-                                          page_layout.column_width * page_layout.pt_to_pixel,
+                                          page_layout.column_width, 
                                           text);
   pango_lines = split_paragraphs_into_lines(&page_layout, paragraphs);
 
-  if (OUT == NULL)
-    OUT = stdout;
+  cairo_scale(cr, page_layout.scale_x, page_layout.scale_y);
 
-  paps_set_scale(paps, page_layout.scale_x, page_layout.scale_y);
-  print_postscript_header(OUT, title, &page_layout);
-  ps_pages_string = g_string_new("");
-  
-  num_pages = output_pages(OUT, pango_lines, &page_layout, do_draw_header, pango_context);
+  output_pages(surface, cr, pango_lines, &page_layout, do_draw_header, pango_context);
 
-  paps_header = paps_get_postscript_header_strdup(paps);
-  fprintf(OUT, "%s", paps_header);
-  g_free(paps_header);
-
-  fprintf(OUT, "%%%%EndPrologue\n");
-  fprintf(OUT, "%s", ps_pages_string->str);
-  print_postscript_trailer(OUT, num_pages);
-
-  // Cleanup
-  g_string_free(ps_pages_string, TRUE);
+  cairo_destroy (cr);
+  cairo_surface_finish (surface);
+  cairo_surface_destroy(surface);
   g_option_context_free(ctxt);
 
   return 0;
@@ -579,132 +576,21 @@ read_file (FILE   *file,
   return text;
 }
 
-#if 0
-/* Take a UTF8 string and break it into paragraphs on \n characters.
- *
- * Sorry. I couldn't figure out what this version was supposed to do
- *
- */
-static GList *
-split_text_into_paragraphs (PangoContext *pango_context,
-                            page_layout_t *page_layout,
-                            int paint_width,  /* In pixels */
-                            char *text)
-{
-  char *p = text;
-  char *next;
-  gunichar wc;
-  GList *result = NULL;
-  char *last_para = text;
-  
-  while (p != NULL && *p)
-    {
-      wc = g_utf8_get_char (p);
-      next = g_utf8_next_char (p);
-      if (wc == (gunichar)-1)
-        {
-          fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
-          wc = 0;
-        }
-      if (!*p || !wc || wc == '\n' || wc == '\f')
-        {
-          Paragraph *para = g_new (Paragraph, 1);
-          para->text = last_para;
-          para->length = p - last_para;
-          para->layout = pango_layout_new (pango_context);
-
-	  if (cpi > 0.0L && page_layout->do_wordwrap)
-	    {
-	      PangoRectangle ink_rect, logical_rect;
-	      wchar_t *wtext, *wnewtext;
-	      gchar *newtext;
-	      size_t i, len, wwidth = 0, n;
-
-	      wtext = g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
-	      if (wtext == NULL)
-	        {
-		  fprintf (stderr, "Failed to convert UTF-8 to UCS-4.\n");
-		  return NULL;
-		}
-
-	      len = g_utf8_strlen (para->text, para->length);
-	      /* the amount of characters to be able to put on the line against CPI */
-	      n = page_layout->column_width / 72.0 * cpi;
-	      if (len > n)
-	        {
-		  wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
-		  if (wnewtext == NULL)
-		    {
-		      fprintf (stderr, "Failed to allocate a memory.\n");
-		      g_free (wtext);
-		      return NULL;
-		    }
-		  for (i = 0; i < len; i++)
-		    {
-		      wwidth += wcwidth (wtext[i]);
-		      if (wwidth > n)
-			  break;
-		      wnewtext[i] = wtext[i];
-		    }
-		  wnewtext[i] = 0L;
-
-		  newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
-		  if (newtext == NULL)
-		    {
-		      fprintf (stderr, "Failed to convert UCS-4 to UTF-8.\n");
-		      return NULL;
-		    }
-
-		  pango_layout_set_text (para->layout, newtext, -1);
-		  pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
-		  /* update paint_width to wrap_against CPI */
-		  paint_width = logical_rect.width / PANGO_SCALE;
-		  g_free (newtext);
-		  g_free (wnewtext);
-		}
-	      g_free (wtext);
-	    }
-          pango_layout_set_text (para->layout, para->text, para->length);
-          pango_layout_set_justify (para->layout, page_layout->do_justify);
-          pango_layout_set_alignment (para->layout,
-                                      page_layout->pango_dir == PANGO_DIRECTION_LTR
-                                      ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-          pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
-          if (page_layout->do_wordwrap)
-              pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
-          para->height = 0;
-
-          if (wc == '\f')
-              para->formfeed = 1;
-          else
-              para->formfeed = 0;
-
-          last_para = next;
-            
-          result = g_list_prepend (result, para);
-        }
-      if (!wc) /* incomplete character at end */
-        break;
-      p = next;
-    }
-
-  return g_list_reverse (result);
-}
-#endif
 
 /* Take a UTF8 string and break it into paragraphs on \n characters
  */
 static GList *
-split_text_into_paragraphs (PangoContext *pango_context,
+split_text_into_paragraphs (cairo_t *cr,
+                            PangoContext *pango_context,
                             page_layout_t *page_layout,
                             int paint_width,  /* In pixels */
-                            char *text)
+                            const char *text)
 {
-  char *p = text;
+  const char *p = text;
   char *next;
   gunichar wc;
   GList *result = NULL;
-  char *last_para = text;
+  const char *last_para = text;
 
   /* If we are using markup we treat the entire text as a single paragraph.
    * I tested it and found that this is much slower than the split and
@@ -716,7 +602,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
       Paragraph *para = g_new (Paragraph, 1);
       para->text = text;
       para->length = strlen(text);
-      para->layout = pango_layout_new (pango_context);
+      para->layout = pango_cairo_create_layout(cr); // pango_layout_new (pango_context);
       //          pango_layout_set_font_description (para->layout, font_description);
       pango_layout_set_markup (para->layout, para->text, para->length);
       pango_layout_set_justify (para->layout, page_layout->do_justify);
@@ -823,14 +709,15 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
     }
   
   if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L)
-      page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE / max_height;
+      page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * PANGO_SCALE / max_height;
 
   return g_list_reverse(line_list);
   
 }
 
 int
-output_pages(FILE          *OUT,
+output_pages(cairo_surface_t *surface,
+             cairo_t       *cr,
              GList         *pango_lines,
              page_layout_t *page_layout,
              gboolean       need_header,
@@ -839,13 +726,13 @@ output_pages(FILE          *OUT,
   int column_idx = 0;
   int column_y_pos = 0;
   int page_idx = 1;
-  int pango_column_height = page_layout->column_height * page_layout->pt_to_pixel * PANGO_SCALE;
+  int pango_column_height = page_layout->column_height * PANGO_SCALE;
   LineLink *prev_line_link = NULL;
 
-  start_page(OUT, page_idx);
+  start_page(surface, cr, page_layout, page_idx);
 
   if (need_header)
-    draw_page_header_line_to_page(OUT, FALSE, page_layout, pango_context, page_idx);
+    draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
 
   while(pango_lines)
     {
@@ -862,207 +749,40 @@ output_pages(FILE          *OUT,
           if (column_idx == page_layout->num_columns)
             {
               column_idx = 0;
-              eject_page(OUT);
+              eject_page(cr);
               page_idx++;
-              start_page(OUT, page_idx);
+              start_page(surface, cr, page_layout, page_idx);
 
               if (need_header)
-                draw_page_header_line_to_page(OUT, FALSE, page_layout, pango_context, page_idx);
+                draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
             }
           else
             {
-              eject_column(OUT,
+              eject_column(cr,
                            page_layout,
                            column_idx
                            );
             }
         }
-      draw_line_to_page(OUT,
+      draw_line_to_page(cr,
                         column_idx,
                         column_y_pos+line_link->logical_rect.height,
                         page_layout,
                         line);
 
       if (page_layout->lpi > 0.0L)
-        column_y_pos += (int)(1.0 / page_layout->lpi * 72.0 * page_layout->pt_to_pixel * PANGO_SCALE);
+        column_y_pos += (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
       else
         column_y_pos += line_link->logical_rect.height;
       
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
     }
-  eject_page(OUT);
+  eject_page(cr);
   return page_idx;
 }
 
-void print_postscript_header(FILE *OUT,
-                             const char *title,
-                             page_layout_t *page_layout)
-{
-  const char *bool_name[2] = { "false", "true" };
-  const char *orientation_names[2] = { "Portrait", "Landscape" };
-  int bodytop = page_layout->header_ypos + page_layout->header_sep;
-  int orientation = page_layout->page_width > page_layout->page_height;
-  int bb_page_width = page_layout->page_width;
-  int bb_page_height = page_layout->page_height;
-  
-  /* Keep bounding box non-rotated to make ggv happy */
-  if (orientation)
-    {
-      int tmp = bb_page_width;
-      bb_page_width = bb_page_height;
-      bb_page_height = tmp;
-    }
-  
-  fprintf(OUT,
-          "%%!PS-Adobe-3.0\n"
-          "%%%%Title: %s\n"
-          "%%%%Creator: paps version 0.6.7 by Dov Grobgeld\n"
-          "%%%%Pages: (atend)\n"
-          "%%%%BoundingBox: 0 0 %d %d\n"
-          "%%%%BeginProlog\n"
-          "%%%%Orientation: %s\n"
-          "/papsdict 1 dict def\n"
-          "papsdict begin\n"
-          "\n"
-          "/inch {72 mul} bind def\n"
-          "/mm {1 inch 25.4 div mul} bind def\n"
-          "\n"
-          "%% override setpagedevice if it is not defined\n"
-          "/setpagedevice where {\n"
-          "    pop %% get rid of its dictionary\n"
-          "    /setpagesize { \n"
-          "       3 dict begin\n"
-          "         /pageheight exch def \n"
-          "         /pagewidth exch def\n"
-          "         /orientation 0 def\n"
-          "         %% Exchange pagewidth and pageheight so that pagewidth is bigger\n"
-          "         pagewidth pageheight gt {  \n"
-          "             pagewidth\n"
-          "             /pagewidth pageheight def\n"
-          "             /pageheight exch def\n"
-          "             /orientation 3 def\n"
-          "         } if\n"
-          "         2 dict\n"
-          "         dup /PageSize [pagewidth pageheight] put\n"
-          "         dup /Orientation orientation put\n"
-          "         setpagedevice \n"
-          "       end\n"
-          "    } def\n"
-          "}\n"
-          "{\n"
-          "    /setpagesize { pop pop } def\n"
-          "} ifelse\n"
-          "/duplex {\n"
-          "    statusdict /setduplexmode known \n"
-          "    { statusdict begin setduplexmode end } {pop} ifelse\n"
-          "} def\n"
-          "/tumble {\n"
-          "    statusdict /settumble known\n"
-          "   { statusdict begin settumble end } {pop} ifelse\n"
-          "} def\n"
-          "%% Turn the page around\n"
-          "/turnpage {\n"
-          "  90 rotate\n"
-          "  0 pageheight neg translate\n"
-          "} def\n",
-          title,
-          bb_page_width,
-          bb_page_height,
-          orientation_names[orientation]
-          );
-  
-  fprintf(OUT,
-          "%% User settings\n"
-          "/pagewidth %d def\n"
-          "/pageheight %d def\n"
-          "pagewidth pageheight setpagesize\n"
-          "/column_width %d def\n"
-          
-          "/bodyheight %d def\n"
-          "/lmarg %d def\n"
-          
-          "/ytop %d def\n"
-          "/do_separation_line %s def\n"
-          "/do_landscape %s def\n"
-          
-          "/do_tumble %s def\n"
-          "/do_duplex %s def\n",
-          page_layout->page_width,
-          page_layout->page_height,
-          page_layout->column_width,
-          page_layout->column_height,
-          page_layout->left_margin,
-          page_layout->page_height - bodytop,
-          bool_name[page_layout->do_separation_line>0],
-          bool_name[page_layout->do_landscape>0],
-          bool_name[page_layout->do_tumble>0],
-          bool_name[page_layout->do_duplex>0]
-          );
-  
-  fprintf(OUT,
-          "%% Procedures to translate position to first and second column\n"
-          "/lw 20 def %% whatever\n"
-          "/setnumcolumns {\n"
-          "    /numcolumns exch def\n"
-          "    /firstcolumn { /xpos lmarg def /ypos ytop def} def\n"
-          "    /nextcolumn { \n"
-          "      do_separation_line {\n"
-          "          xpos column_width add gutter_width 2 div add %% x start\n"
-          "           ytop lw add moveto              %% y start\n"
-          "          0 bodyheight lw add neg rlineto 0 setlinewidth stroke\n"
-          "      } if\n"
-          "      /xpos xpos column_width add gutter_width add def \n"
-          "      /ypos ytop def\n"
-          "    } def\n"
-          "} def\n"
-          "\n"
-          );
-  
-  fprintf(OUT,
-          "%d setnumcolumns\n",
-          page_layout->num_columns);
-  fprintf(OUT,
-          "/showline {\n"
-          "    /y exch def\n"
-          "    /s exch def\n"
-          "    xpos y moveto \n"
-          "    column_width 0 rlineto stroke\n"
-          "    xpos y moveto /Helvetica findfont 20 scalefont setfont s show\n"
-          "} def\n"
-          );
-
-  // The following definitions polute the global namespace. All such
-  // definitions should start with paps_
-  fprintf(OUT,
-          "/paps_bop {  %% Beginning of page definitions\n"
-          "    papsdict begin\n"
-          "    gsave\n"
-          "    do_landscape {turnpage} if \n"
-          "    %% ps2pdf gets wrong orientation without this!\n"
-          "    /Helvetica findfont setfont 100 100 moveto ( ) show\n"
-          "    firstcolumn\n"
-          "    end\n"
-          "} def\n"
-          "\n"
-          "/paps_eop {  %% End of page cleanups\n"
-          "    grestore    \n"
-          "} def\n");
-
-}
-
-void print_postscript_trailer(FILE *OUT,
-                             int num_pages)
-{
-  fprintf(OUT,
-          "%%%%Pages: %d\n"
-          "%%%%Trailer\n"
-          "%%%%EOF\n",
-          num_pages
-          );
-}
-
-void eject_column(FILE *OUT,
+void eject_column(cairo_t *cr,
                   page_layout_t *page_layout,
                   int column_idx)
 {
@@ -1086,48 +806,48 @@ void eject_column(FILE *OUT,
         + page_layout->column_width * column_idx
       + total_gutter;
 
-  y_top = page_layout->page_height - page_layout->top_margin - page_layout->header_height - page_layout->header_sep / 2;
-  y_bot = page_layout->bottom_margin - page_layout->footer_height;
+  y_top = page_layout->top_margin + page_layout->header_height + page_layout->header_sep / 2;
+  y_bot = page_layout->page_height - page_layout->bottom_margin - page_layout->footer_height;
 
-  g_string_append_printf(ps_pages_string,
-                         "%f %f moveto %f %f lineto 0 setlinewidth stroke\n",
-                         x_pos, y_top,
-                         x_pos, y_bot);
+  cairo_move_to(cr,x_pos, y_top);
+  cairo_line_to(cr,x_pos, y_bot);
+  cairo_set_line_width(cr, 0.1);
+  cairo_stroke(cr);
 }
 
-void eject_page(FILE *OUT)
+void eject_page(cairo_t *cr)
 {
-  g_string_append_printf(ps_pages_string,
-                         "paps_eop\n"
-                         "showpage\n");
+  cairo_show_page(cr);
 }
 
-void start_page(FILE *OUT,
+void start_page(cairo_surface_t *surface,
+                cairo_t *cr,
+                page_layout_t *page_layout,
                 int page_idx)
 {
-  g_string_append_printf(ps_pages_string,
-                         "%%%%Page: %d %d\n"
-                         "paps_bop\n",
-                         page_idx, page_idx);
+  //  cairo_ps_surface_dsc_begin_page_setup (surface);
+  cairo_identity_matrix(cr);
+  if (page_layout->do_landscape)
+    {
+      cairo_translate(cr,page_layout->page_height, 0);
+      cairo_rotate(cr, M_PI/2);
+    }
 }
 
 void
-draw_line_to_page(FILE *OUT,
+draw_line_to_page(cairo_t *cr,
                   int column_idx,
                   int column_pos,
                   page_layout_t *page_layout,
                   PangoLayoutLine *line)
 {
   /* Assume square aspect ratio for now */
-  double y_pos = page_layout->page_height
-               - page_layout->top_margin
-               - page_layout->header_sep
-               - column_pos / PANGO_SCALE * page_layout->pixel_to_pt;
+  double y_pos = page_layout->top_margin
+               + page_layout->header_sep
+               + column_pos / PANGO_SCALE;
   double x_pos = page_layout->left_margin
                + column_idx * (page_layout->column_width
                                + page_layout->gutter_width);
-  gchar *ps_layout;
-
   PangoRectangle ink_rect, logical_rect;
 
   /* Do RTL column layout for RTL direction */
@@ -1142,23 +862,16 @@ draw_line_to_page(FILE *OUT,
                                 &ink_rect,
                                 &logical_rect);
 
-
   if (page_layout->pango_dir == PANGO_DIRECTION_RTL) {
-      x_pos += page_layout->column_width  - logical_rect.width / (page_layout->pt_to_pixel * PANGO_SCALE);
+      x_pos += page_layout->column_width  - logical_rect.width / PANGO_SCALE;
   }
 
-  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
-  ps_layout = paps_layout_line_to_postscript_strdup(paps,
-                                                    x_pos, y_pos,
-                                                    line);
-
-  g_string_append(ps_pages_string,
-                  ps_layout);
-  g_free(ps_layout);
+  cairo_move_to(cr, x_pos, y_pos);
+  pango_cairo_show_layout_line(cr, line);
 }
 
 int
-draw_page_header_line_to_page(FILE            *OUT,
+draw_page_header_line_to_page(cairo_t         *cr,
                               gboolean         is_footer,
                               page_layout_t   *page_layout,
                               PangoContext    *ctx,
@@ -1169,7 +882,7 @@ draw_page_header_line_to_page(FILE            *OUT,
   PangoRectangle ink_rect, logical_rect;
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
-  gchar *ps_layout, *header, date[256];
+  gchar *header, date[256];
   time_t t;
   struct tm tm;
   int height;
@@ -1196,63 +909,49 @@ draw_page_header_line_to_page(FILE            *OUT,
                                 &ink_rect,
                                 &logical_rect);
   x_pos = page_layout->left_margin;
-  height = logical_rect.height / PANGO_SCALE * page_layout->pixel_to_pt/3.0;
+  height = logical_rect.height / PANGO_SCALE /3.0;
 
   /* The header is placed right after the margin */
   if (is_footer)
     {
-      y_pos = page_layout->bottom_margin;
+      y_pos = page_layout->page_height - page_layout->bottom_margin;
       page_layout->footer_height = height;
     }
   else
     {
-      y_pos = page_layout->page_height - page_layout->top_margin - height;
+      y_pos = page_layout->top_margin + height;
       page_layout->header_height = height;
     }
-  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
-  ps_layout = paps_layout_line_to_postscript_strdup(paps,
-                                                    x_pos, y_pos,
-                                                    line);
-  g_string_append(ps_pages_string,
-                  ps_layout);
-  g_free(ps_layout);
+
+  cairo_move_to(cr, x_pos,y_pos);
+  pango_cairo_show_layout_line(cr,line);
 
   /* output a center of header/footer */
   line = pango_layout_get_line(layout, 1);
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt)) / 2;
-  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
-  ps_layout = paps_layout_line_to_postscript_strdup(paps,
-                                                    x_pos, y_pos,
-                                                    line);
-  g_string_append(ps_pages_string,
-                  ps_layout);
-  g_free(ps_layout);
+  x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE )) / 2;
+  cairo_move_to(cr, x_pos,y_pos);
+  pango_cairo_show_layout_line(cr,line);
 
   /* output a right edge of header/footer */
   line = pango_layout_get_line(layout, 2);
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE * page_layout->pixel_to_pt);
-  paps_set_scale(paps, page_layout->scale_x, page_layout->scale_y);
-  ps_layout = paps_layout_line_to_postscript_strdup(paps,
-                                                    x_pos, y_pos,
-                                                    line);
-  g_string_append(ps_pages_string,
-                  ps_layout);
-  g_free(ps_layout);
+  x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE );
+  cairo_move_to(cr, x_pos,y_pos);
+  pango_cairo_show_layout_line(cr,line);
 
   g_object_unref(layout);
 
   /* header separator */
-  line_pos = page_layout->page_height - page_layout->top_margin - page_layout->header_height - page_layout->header_sep / 2;
-  g_string_append_printf(ps_pages_string,
-                         "%d %f moveto %d %f lineto 0 setlinewidth stroke\n",
-                         page_layout->left_margin, line_pos,
-                         page_layout->page_width - page_layout->right_margin, line_pos);
+  line_pos = page_layout->top_margin + page_layout->header_height + page_layout->header_sep / 2;
+  cairo_move_to(cr, page_layout->left_margin, line_pos);
+  cairo_line_to(cr,page_layout->page_width - page_layout->right_margin, line_pos);
+  cairo_set_line_width(cr,0.1); // TBD
+  cairo_stroke(cr);
 
   return logical_rect.height;
 }
