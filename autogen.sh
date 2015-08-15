@@ -7,7 +7,7 @@ DIE=0
 
 (autoconf --version) < /dev/null > /dev/null 2>&1 || {
 	echo
-	echo "You must have autoconf installed to compile libpaps."
+	echo "You must have autoconf installed to compile paps."
 	echo "Download the appropriate package for your distribution,"
 	echo "or get the source tarball at ftp://ftp.gnu.org/pub/gnu/"
 	DIE=1
@@ -15,7 +15,7 @@ DIE=0
 
 (libtool --version) < /dev/null > /dev/null 2>&1 || {
 	echo
-	echo "You must have libtool installed to compile libpaps."
+	echo "You must have libtool installed to compile paps."
 	echo "Get it from ftp://ftp.gnu.org/pub/gnu/libtool/"
 	DIE=1
 }

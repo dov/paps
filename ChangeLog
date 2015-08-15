@@ -1,3 +1,7 @@
+2015-08-16  Dov Grobgeld  <dov.grobgeld@gmail.com>
+
+        * paps.c : Ported to cairo and removed libpaps as it is not needed anymore.
+
 2007-04-13  Dov Grobgeld  <dov.grobgeld@gmail.com>
 
 	* paps.c: Erased --justify option since it is not implemented in 

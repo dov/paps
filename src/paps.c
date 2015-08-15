@@ -26,6 +26,8 @@
 #include <pango/pangocairo.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-ps.h>
+#include <cairo/cairo-pdf.h>
+#include <cairo/cairo-svg.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -47,6 +49,12 @@ typedef enum {
     PAPER_TYPE_US_LEGAL = 2
 } paper_type_t ;
 
+typedef enum {
+    FORMAT_POSTSCRIPT = 0,
+    FORMAT_PDF = 1,
+    FORMAT_SVG = 2
+} output_format_t ;
+
 typedef struct  {
     double width;
     double height;
@@ -67,8 +75,8 @@ typedef struct {
   int bottom_margin;
   int left_margin;
   int right_margin;
-  int page_width;
-  int page_height;
+  double page_width;
+  double page_height;
   int header_ypos;
   int header_sep;
   int header_height;
@@ -157,6 +165,7 @@ double last_pos_y = -1;
 double last_pos_x = -1;
 FILE *output_fh;
 paper_type_t paper_type = PAPER_TYPE_A4;
+output_format_t output_format = FORMAT_POSTSCRIPT;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
 
@@ -183,6 +192,36 @@ _paps_arg_paper_cb(const char *option_name,
   else
     {
       fprintf(stderr, "You must specify page size.\n");
+      retval = FALSE;
+    }
+  
+  return retval;
+}
+
+static gboolean
+_paps_arg_format_cb(const char *option_name,
+                    const char *value,
+                    gpointer    data)
+{
+  gboolean retval = TRUE;
+  
+  if (value && *value)
+    {
+      if (g_ascii_strcasecmp(value, "pdf") == 0)
+        output_format = FORMAT_PDF;
+      else if (g_ascii_strcasecmp(value, "ps") == 0
+               || g_ascii_strcasecmp(value, "postscript") == 0)
+        output_format = FORMAT_POSTSCRIPT;
+      else if (g_ascii_strcasecmp(value, "svg") == 0)
+        output_format = FORMAT_SVG;
+      else {
+        retval = FALSE;
+        fprintf(stderr, "Unknown output format: %s.\n", value);
+      }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify a output format.\n");
       retval = FALSE;
     }
   
@@ -283,27 +322,47 @@ int main(int argc, char *argv[])
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
   gboolean do_fatal_warnings = FALSE;
   gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
+  gchar *output = NULL;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
-    {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape, "Landscape output. (Default: portrait)", NULL},
-    {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars, "Whether to stretch characters in y-direction to fill lines. (Default: no)", NULL},
-    {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup, "Should the text be considered pango markup? (Default: no)", NULL},
-    {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns, "Number of columns output. (Default: 1)", "NUM"},
-    {"font", 0, 0, G_OPTION_ARG_STRING, &font, "Set the font description. (Default: Monospace 12)", "DESC"},
-    {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl, "Do rtl layout.", NULL},
+    {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape,
+     "Landscape output. (Default: portrait)", NULL},
+    {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
+     "Whether to stretch characters in y-direction to fill lines. (Default: no)", NULL},
+    {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
+     "Should the text be considered pango markup? (Default: no)", NULL},
+    {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns,
+     "Number of columns output. (Default: 1)", "NUM"},
+    {"font", 0, 0, G_OPTION_ARG_STRING, &font,
+     "Set the font description. (Default: Monospace 12)", "DESC"},
+    {"output", 'o', 0, G_OPTION_ARG_STRING, &output,
+     "Output file. (Default stdout)", "DESC"},
+    {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl,
+     "Do rtl layout.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
      "                          letter, a4. (Default: a4)", "PAPER"},
-    {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin, "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
-    {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin, "Set top margin. (Default: 36)", "NUM"},
-    {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin, "Set right margin. (Default: 36)", "NUM"},
-    {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin, "Set left margin. (Default: 36)", "NUM"},
-    {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header, "Draw page header for each page.", NULL},
-    {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding, "Assume the documentation encoding.", "ENCODING"},
-    {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb, "Set the amount of lines per inch.", "REAL"},
-    {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb, "Set the amount of characters per inch.", "REAL"},
-    {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings, "Set glib fatal warnings", "REAL"},
+    {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
+     "Choose output format. Known formats are pdf, svg, ps. (Default ps)\n"},
+    {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
+     "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
+    {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
+     "Set top margin. (Default: 36)", "NUM"},
+    {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin,
+     "Set right margin. (Default: 36)", "NUM"},
+    {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin,
+     "Set left margin. (Default: 36)", "NUM"},
+    {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
+     "Draw page header for each page.", NULL},
+    {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
+     "Assume the documentation encoding.", "ENCODING"},
+    {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
+     "Set the amount of lines per inch.", "REAL"},
+    {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
+     "Set the amount of characters per inch.", "REAL"},
+    {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
+     "Set glib fatal warnings", "REAL"},
     
     {NULL}
 
@@ -320,8 +379,8 @@ int main(int argc, char *argv[])
   PangoFontMetrics *metrics;
   int gutter_width = 40;
   int total_gutter_width;
-  int page_width = paper_sizes[0].width;
-  int page_height = paper_sizes[0].height;
+  double page_width = paper_sizes[0].width;
+  double page_height = paper_sizes[0].height;
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
   gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
@@ -331,9 +390,8 @@ int main(int argc, char *argv[])
   GIConv cvh = NULL;
   GOptionGroup *options;
   cairo_t *cr;
-
-  /* Prerequisite when using glib. */
-  g_type_init();
+  cairo_surface_t *surface = NULL;
+  double surface_page_width = 0, surface_page_height = 0;
 
   /* Init page_layout_t parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0;
@@ -361,7 +419,7 @@ int main(int argc, char *argv[])
   if (argc > 1)
     {
       filename_in = argv[1];
-      IN = fopen(filename_in, "rb");
+      IN = fopen(filename_in, "r");
       if (!IN)
         {
           fprintf(stderr, "Failed to open %s!\n", filename_in);
@@ -375,11 +433,47 @@ int main(int argc, char *argv[])
     }
 
   // For now always write to stdout
-  output_fh = stdout;
+  if (output == NULL)
+    output_fh = stdout;
+  else
+    {
+      output_fh = fopen(output,"wb");
+      if (!output_fh)
+        {
+          fprintf(stderr, "Failed to open %s for writing!\n", output);
+          exit(-1);
+        }
+    }
 
-  cairo_surface_t *surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
-                                                                NULL,
-                                                                page_width, page_height);
+  /* Page layout */
+  page_width = paper_sizes[(int)paper_type].width;
+  page_height = paper_sizes[(int)paper_type].height;
+  
+  /* Swap width and height for landscape except for postscript */
+  surface_page_width = page_width;
+  surface_page_height = page_height;
+  if (output_format != FORMAT_POSTSCRIPT && page_layout.do_landscape)
+    {
+      surface_page_width = page_height;
+      surface_page_height = page_width;
+    }
+        
+  if (output_format == FORMAT_POSTSCRIPT)
+    surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
+                                                 NULL,
+                                                 surface_page_width,
+                                                 surface_page_height);
+  else if (output_format == FORMAT_PDF)
+    surface = cairo_pdf_surface_create_for_stream(&paps_cairo_write_func,
+                                                  NULL,
+                                                  surface_page_width,
+                                                  surface_page_height);
+  else 
+    surface = cairo_svg_surface_create_for_stream(&paps_cairo_write_func,
+                                                  NULL,
+                                                  surface_page_width,
+                                                  surface_page_height);
+
   cr = cairo_create(surface);
   
   pango_context = pango_cairo_create_context(cr);
@@ -397,10 +491,6 @@ int main(int argc, char *argv[])
 
   pango_context_set_font_description (pango_context, font_description);
 
-  /* Page layout */
-  page_width = paper_sizes[(int)paper_type].width;
-  page_height = paper_sizes[(int)paper_type].height;
-  
   if (num_columns == 1)
     total_gutter_width = 0;
   else
@@ -825,12 +915,24 @@ void start_page(cairo_surface_t *surface,
                 page_layout_t *page_layout,
                 int page_idx)
 {
-  //  cairo_ps_surface_dsc_begin_page_setup (surface);
   cairo_identity_matrix(cr);
+
+  if (output_format == FORMAT_POSTSCRIPT)
+    cairo_ps_surface_dsc_begin_page_setup (surface);
+
   if (page_layout->do_landscape)
     {
-      cairo_translate(cr,page_layout->page_height, 0);
-      cairo_rotate(cr, M_PI/2);
+      if (output_format == FORMAT_POSTSCRIPT)
+        {
+          cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
+          cairo_translate(cr,page_layout->page_height, 0);
+          cairo_rotate(cr, M_PI/2);
+        }
+    }
+  else
+    {
+      if (output_format == FORMAT_POSTSCRIPT)
+        cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Portrait");
     }
 }
 
