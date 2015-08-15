@@ -1,7 +1,0 @@
-AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(paps, 0.7.0)
-
-AC_LANG_C
-AC_PROG_CC
-
-AC_OUTPUT(Makefile src/Makefile)
