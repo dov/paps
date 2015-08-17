@@ -477,6 +477,7 @@ int main(int argc, char *argv[])
   cr = cairo_create(surface);
   
   pango_context = pango_cairo_create_context(cr);
+  pango_cairo_context_set_resolution(pango_context, 72.0); /* Native postscript resolution */
   
   /* Setup pango */
   pango_context_set_language (pango_context, get_language ());
