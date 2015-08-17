@@ -452,7 +452,7 @@ int main(int argc, char *argv[])
   /* Swap width and height for landscape except for postscript */
   surface_page_width = page_width;
   surface_page_height = page_height;
-  if (output_format != FORMAT_POSTSCRIPT && page_layout.do_landscape)
+  if (output_format != FORMAT_POSTSCRIPT && do_landscape)
     {
       surface_page_width = page_height;
       surface_page_height = page_width;
