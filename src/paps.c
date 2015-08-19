@@ -36,6 +36,7 @@
 #include <time.h>
 #include <locale.h>
 #include <math.h>
+#include <wchar.h>
 
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY	"Monospace"
@@ -559,7 +560,8 @@ int main(int argc, char *argv[])
   /* calculate x-coordinate scale */
   if (page_layout.cpi > 0.0L)
     {
-      double scale;
+      gint font_size;
+
       fontmap = pango_ft2_font_map_new ();
       fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
       metrics = pango_fontset_get_metrics (fontset);
@@ -567,17 +569,14 @@ int main(int argc, char *argv[])
       w = pango_font_metrics_get_approximate_digit_width (metrics);
       if (w > max_width)
 	  max_width = w;
-      page_layout.scale_x = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
+      page_layout.scale_x = 1 / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
 
-      // Now figure out how to scale the font to get that size
-      scale = 1 / page_layout.cpi * 72.0 * PANGO_SCALE / max_width;
-
+      font_size = pango_font_description_get_size (font_description);
       // update the font size to that width
-      pango_font_description_set_size (font_description, (int)(atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE * scale));
+      pango_font_description_set_size (font_description, font_size * page_layout.scale_x);
       pango_context_set_font_description (pango_context, font_description);
-      
     }
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
@@ -741,18 +740,94 @@ split_text_into_paragraphs (cairo_t *cr,
               para->text = last_para;
               para->length = p - last_para;
               para->layout = pango_layout_new (pango_context);
-              //          pango_layout_set_font_description (para->layout, font_description);
-              pango_layout_set_text (para->layout, para->text, para->length);
+	      if (page_layout->cpi > 0.0L && page_layout->do_wordwrap)
+		{
+		  /* figuring out the correct width from the pango_font_metrics_get_approximate_width()
+		   * is really hard and pango_layout_set_wrap() doesn't work properly then.
+		   * Those are not reliable to render the characters exactly according to the given CPI.
+		   * So re-calculate the widdth to wrap up to be comfortable with CPI.
+		   */
+		  wchar_t *wtext = NULL, *wnewtext = NULL;
+		  gchar *newtext = NULL;
+		  gsize len, col, i, wwidth = 0;
+		  PangoRectangle ink_rect, logical_rect;
+
+		  wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
+		  if (wtext == NULL)
+		    {
+		      fprintf (stderr, "%s: Unable to convert UTF-8 to UCS-4.\n", g_get_prgname ());
+		    fail:
+		      g_free (wtext);
+		      g_free (wnewtext);
+		      g_free (newtext);
+		      exit (1);
+		    }
+		  len = g_utf8_strlen (para->text, para->length);
+		  /* the amount of characters that can be put on the line against CPI */
+		  col = page_layout->column_width / 72.0 * page_layout->cpi;
+		  if (len > col)
+		    {
+		      /* need to wrap them up */
+		      wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
+		      if (wnewtext == NULL)
+			{
+			  fprintf (stderr, "%s: Unable to allocate the memory.\n", g_get_prgname ());
+			  goto fail;
+			}
+		      for (i = 0; i < len; i++)
+			{
+			  gssize w = wcwidth (wtext[i]);
+
+			  if (w >= 0)
+			    wwidth += w;
+			  if (wwidth > col)
+			    break;
+			  wnewtext[i] = wtext[i];
+			}
+		      wnewtext[i] = 0L;
+
+		      newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
+		      if (newtext == NULL)
+			{
+			  fprintf (stderr, "%s: Unable to convert UCS-4 to UTF-8.\n", g_get_prgname ());
+			  goto fail;
+			}
+		      pango_layout_set_text (para->layout, newtext, -1);
+		      pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
+		      paint_width = logical_rect.width / PANGO_SCALE;
+		      g_free (wnewtext);
+		      g_free (newtext);
+
+		      para->length = i;
+		      next = g_utf8_offset_to_pointer (para->text, para->length);
+		      wc = g_utf8_get_char (g_utf8_prev_char (next));
+		    }
+		  else
+		    {
+		      pango_layout_set_text (para->layout, para->text, para->length);
+		    }
+		  g_free (wtext);
+
+		  pango_layout_set_width (para->layout, -1);
+		}
+	      else
+		{
+		  pango_layout_set_text (para->layout, para->text, para->length);
+		  if (page_layout->do_wordwrap)
+		    {
+		      pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
+		      pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+		    }
+		  else
+		    {
+		      pango_layout_set_width (para->layout, -1);
+		    }
+		}
+		  
               pango_layout_set_justify (para->layout, page_layout->do_justify);
               pango_layout_set_alignment (para->layout,
                                           page_layout->pango_dir == PANGO_DIRECTION_LTR
                                           ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-              if (page_layout->do_wordwrap) {
-                pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
-                pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
-              } else {
-                pango_layout_set_width (para->layout, -1);
-              }
 
               para->height = 0;
 
@@ -838,6 +913,7 @@ output_pages(cairo_surface_t *surface,
   int column_y_pos = 0;
   int page_idx = 1;
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
+  int height = 0;
   LineLink *prev_line_link = NULL;
 
   start_page(surface, cr, page_layout, page_idx);
@@ -875,17 +951,16 @@ output_pages(cairo_surface_t *surface,
                            );
             }
         }
+      if (page_layout->lpi > 0.0L)
+	height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+      else
+	height = line_link->logical_rect.height;
       draw_line_to_page(cr,
                         column_idx,
-                        column_y_pos+line_link->logical_rect.height,
+                        column_y_pos+height,
                         page_layout,
                         line);
-
-      if (page_layout->lpi > 0.0L)
-        column_y_pos += (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
-      else
-        column_y_pos += line_link->logical_rect.height;
-      
+      column_y_pos += height;
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
     }
