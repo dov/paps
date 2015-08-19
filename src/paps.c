@@ -36,6 +36,7 @@
 #include <time.h>
 #include <locale.h>
 #include <math.h>
+#define __USE_XOPEN
 #include <wchar.h>
 
 #define BUFSIZE 1024
@@ -168,6 +169,9 @@ double last_pos_x = -1;
 FILE *output_fh;
 paper_type_t paper_type = PAPER_TYPE_A4;
 output_format_t output_format = FORMAT_POSTSCRIPT;
+PangoGravity gravity = PANGO_GRAVITY_AUTO;
+PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
+const char *opt_language = NULL;
 
 #define CASE(s) if (strcmp(S_, s) == 0)
 
@@ -194,6 +198,68 @@ _paps_arg_paper_cb(const char *option_name,
   else
     {
       fprintf(stderr, "You must specify page size.\n");
+      retval = FALSE;
+    }
+  
+  return retval;
+}
+
+static gboolean
+_paps_arg_gravity_cb(const char *option_name,
+                     const char *value,
+                     gpointer    data)
+{
+  gboolean retval = TRUE;
+  
+  if (value && *value)
+    {
+      if (g_ascii_strcasecmp(value, "south") == 0)
+        gravity = PANGO_GRAVITY_SOUTH;
+      else if (g_ascii_strcasecmp(value, "east") == 0)
+        gravity = PANGO_GRAVITY_EAST;
+      else if (g_ascii_strcasecmp(value, "north") == 0)
+        gravity = PANGO_GRAVITY_NORTH;
+      else if (g_ascii_strcasecmp(value, "west") == 0)
+        gravity = PANGO_GRAVITY_WEST;
+      else if (g_ascii_strcasecmp(value, "auto") == 0)
+        gravity = PANGO_GRAVITY_AUTO;
+      else {
+        retval = FALSE;
+        fprintf(stderr, "Unknown gravity name: %s.\n", value);
+      }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify gravity.\n");
+      retval = FALSE;
+    }
+  
+  return retval;
+}
+
+static gboolean
+_paps_arg_gravity_hint_cb(const char *option_name,
+                          const char *value,
+                          gpointer    data)
+{
+  gboolean retval = TRUE;
+  
+  if (value && *value)
+    {
+      if (g_ascii_strcasecmp(value, "neutral") == 0)
+        gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
+      else if (g_ascii_strcasecmp(value, "strong") == 0)
+        gravity_hint = PANGO_GRAVITY_HINT_STRONG;
+      else if (g_ascii_strcasecmp(value, "line") == 0)
+        gravity_hint = PANGO_GRAVITY_HINT_LINE;
+      else {
+        retval = FALSE;
+        fprintf(stderr, "Unknown gravity hint name: %s.\n", value);
+      }
+    }
+  else
+    {
+      fprintf(stderr, "You must specify gravity hint.\n");
       retval = FALSE;
     }
   
@@ -342,11 +408,19 @@ int main(int argc, char *argv[])
      "Output file. (Default stdout)", "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl,
      "Do rtl layout.", NULL},
+    {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
+     "Justify the layout.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
-     "                          letter, a4. (Default: a4)", "PAPER"},
+     "letter, a4. (Default: a4)", "PAPER"},
+    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_cb,
+     "Base gravity: glyph rotation. Defaut: auto", "GRAVITY"},
+    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_hint_cb,
+     "Gravity hint", "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
      "Choose output format. Known formats are pdf, svg, ps. (Default ps)\n"},
+    {"language", 0, 0, G_OPTION_ARG_STRING, &opt_language,
+     "Language to use for font selection", "en_US/etc"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
      "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
@@ -487,6 +561,12 @@ int main(int argc, char *argv[])
   /* Setup pango */
   pango_context_set_language (pango_context, get_language ());
   pango_context_set_base_dir (pango_context, pango_dir);
+  pango_context_set_language (pango_context,
+			      opt_language
+                              ? pango_language_from_string (opt_language)
+                              : pango_language_get_default ());
+  pango_context_set_base_gravity (pango_context, gravity);
+  pango_context_set_gravity_hint (pango_context, gravity_hint);
   
   /* create the font description */
   font_description = pango_font_description_from_string (font);
@@ -1085,6 +1165,8 @@ draw_page_header_line_to_page(cairo_t         *cr,
   struct tm tm;
   int height;
   gdouble line_pos;
+
+  /* Reset gravity?? */
 
   t = time(NULL);
   tm = *localtime(&t);
