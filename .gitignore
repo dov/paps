@@ -1,6 +1,7 @@
 *\.la
 *\.lo
 *\.m4
+!m4/pkg.m4
 *\.o
 *\.orig
 *sh
