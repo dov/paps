@@ -9,3 +9,5 @@ paps_DEPENDENCIES = $(lib_LIBRARIES)
 
 EXTRA_DIST = paps.1
 
+
+-include $(top_srcdir)/git.mk
