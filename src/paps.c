@@ -36,7 +36,6 @@
 #include <time.h>
 #include <locale.h>
 #include <math.h>
-#define __USE_XOPEN
 #include <wchar.h>
 
 #define BUFSIZE 1024
@@ -100,8 +99,8 @@ typedef struct {
   gboolean do_use_markup;
   gboolean do_stretch_chars;
   PangoDirection pango_dir;
-  gchar *filename;
-  gchar *header_font_desc;
+  const gchar *filename;
+  const gchar *header_font_desc;
   gdouble lpi;
   gdouble cpi;
 } page_layout_t;
@@ -394,7 +393,8 @@ int main(int argc, char *argv[])
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
   gboolean do_fatal_warnings = FALSE;
-  gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE), *encoding = NULL;
+  const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
+  gchar *encoding = NULL;
   gchar *output = NULL;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
@@ -466,8 +466,9 @@ int main(int argc, char *argv[])
   double page_height = paper_sizes[0].height;
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
-  gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
-  gchar *filename_in, *text;
+  const gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
+  const gchar *filename_in;
+  gchar *text;
   int header_sep = 20;
   int max_width = 0, w;
   GIConv cvh = NULL;
@@ -744,7 +745,7 @@ read_file (FILE   *file,
           iblen = strlen (ib);
           ob = bp = obuffer;
           oblen = BUFSIZE * 6 - 1;
-          if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == -1)
+          if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == (gsize)-1)
             {
               fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
 	      exit(1);
