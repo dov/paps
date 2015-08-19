@@ -10,6 +10,7 @@
 Makefile.in
 Makefile
 autom4te.cache/
+config/
 config\.*
 configure
 depcomp
