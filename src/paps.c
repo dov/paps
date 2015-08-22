@@ -385,6 +385,7 @@ int main(int argc, char *argv[])
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
+  gboolean do_encoding_from_lang = FALSE;
   gboolean do_wordwrap = TRUE; // What should be default?
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
@@ -433,6 +434,8 @@ int main(int argc, char *argv[])
      "Draw page header for each page.", NULL},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
      "Assume the documentation encoding.", "ENCODING"},
+    {"lang-encoding", 0, 0, G_OPTION_ARG_NONE, &do_encoding_from_lang,
+     "Determine the encoding from the language setting. (Default: no)", NULL},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
      "Set the amount of lines per inch.", "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
@@ -661,8 +664,7 @@ int main(int argc, char *argv[])
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
       
-
-  if (encoding == NULL)
+  if (do_encoding_from_lang && encoding == NULL)
     {
       encoding = g_strdup(nl_langinfo(CODESET));
       if (!strcmp(encoding, "UTF-8"))
@@ -671,6 +673,7 @@ int main(int argc, char *argv[])
 	  encoding = NULL;
 	}
     }
+
   if (encoding != NULL)
     {
       cvh = g_iconv_open ("UTF-8", encoding);
