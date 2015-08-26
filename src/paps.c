@@ -49,7 +49,8 @@
 typedef enum {
     PAPER_TYPE_A4 = 0,
     PAPER_TYPE_US_LETTER = 1,
-    PAPER_TYPE_US_LEGAL = 2
+    PAPER_TYPE_US_LEGAL = 2,
+    PAPER_TYPE_A3 = 3
 } paper_type_t ;
 
 typedef enum {
@@ -66,7 +67,8 @@ typedef struct  {
 const paper_size_t paper_sizes[] = {
     { 595.28, 841.89}, /* A4 */
     { 612, 792},       /* US letter */
-    { 612, 1008}      /* US legal */
+    { 612, 1008},      /* US legal */
+    { 842, 1190}       /* A3 */
 };
 
 typedef struct {
@@ -190,6 +192,8 @@ _paps_arg_paper_cb(const char *option_name,
         paper_type = PAPER_TYPE_US_LETTER;
       else if (g_ascii_strcasecmp(value, "a4") == 0)
         paper_type = PAPER_TYPE_A4;
+      else if (g_ascii_strcasecmp(value, "a3") == 0)
+        paper_type = PAPER_TYPE_A3;
       else {
         retval = FALSE;
         fprintf(stderr, "Unknown page size name: %s.\n", value);
@@ -413,7 +417,7 @@ int main(int argc, char *argv[])
      "Justify the layout.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
-     "letter, a4. (Default: a4)", "PAPER"},
+     "letter, a3, a4. (Default: a4)", "PAPER"},
     {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_cb,
      "Base gravity: glyph rotation. Defaut: auto", "GRAVITY"},
     {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_hint_cb,
