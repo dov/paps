@@ -39,11 +39,11 @@
 #include <wchar.h>
 
 #define BUFSIZE 1024
-#define DEFAULT_FONT_FAMILY	"Monospace"
-#define DEFAULT_FONT_SIZE	"12"
-#define HEADER_FONT_FAMILY	"Monospace Bold"
-#define HEADER_FONT_SCALE	"12"
-#define MAKE_FONT_NAME(f,s)	f " " s
+#define DEFAULT_FONT_FAMILY     "Monospace"
+#define DEFAULT_FONT_SIZE       "12"
+#define HEADER_FONT_FAMILY      "Monospace Bold"
+#define HEADER_FONT_SCALE       "12"
+#define MAKE_FONT_NAME(f,s)     f " " s
 
 typedef enum {
     PAPER_TYPE_A4 = 0,
@@ -95,7 +95,7 @@ typedef struct {
   gboolean do_justify;
   gboolean do_separation_line;
   gboolean do_draw_contour;
-  gboolean do_wordwrap;
+  gboolean do_show_wrap;
   gboolean do_use_markup;
   gboolean do_stretch_chars;
   PangoDirection pango_dir;
@@ -115,6 +115,7 @@ typedef struct {
   PangoRectangle logical_rect;
   PangoRectangle ink_rect;
   int formfeed;
+  gboolean wrapped;   // Whether the paragraph was character wrapped
 } LineLink;
 
 typedef struct _Paragraph Paragraph;
@@ -126,12 +127,14 @@ struct _Paragraph {
   int length;
   int height;   /* Height, in pixels */
   int formfeed;
+  gboolean wrapped; 
+  gboolean clipped;   // Whether the line was clipped. Used for CPI.
   PangoLayout *layout;
 };
 
 /* Information passed in user data when drawing outlines */
 GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
-					    GList           *paragraphs);
+                                            GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             GIConv           handle);
 static GList *split_text_into_paragraphs   (cairo_t *cr,
@@ -157,7 +160,8 @@ static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
                                             page_layout_t   *page_layout,
-                                            PangoLayoutLine *line);
+                                            PangoLayoutLine *line,
+                                            gboolean         draw_wrap_character);
 static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             gboolean         is_footer,
                                             page_layout_t   *page_layout,
@@ -169,12 +173,51 @@ double last_pos_y = -1;
 double last_pos_x = -1;
 FILE *output_fh;
 paper_type_t paper_type = PAPER_TYPE_A4;
+gboolean output_format_set = FALSE;
 output_format_t output_format = FORMAT_POSTSCRIPT;
 PangoGravity gravity = PANGO_GRAVITY_AUTO;
 PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
 const char *opt_language = NULL;
+gboolean opt_wrap_set = FALSE;
+PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
+cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
+double glyph_font_size = -1;
 
-#define CASE(s) if (strcmp(S_, s) == 0)
+/* Render function for paps glyphs */
+cairo_status_t
+paps_render_glyph(cairo_scaled_font_t *scaled_font,
+                 unsigned long  glyph,
+                 cairo_t *cr,
+                 cairo_text_extents_t *extents)
+{
+  char ch = (unsigned char)glyph;
+
+  if (ch == 'R' || ch == 'L')
+  {
+    // A newline sign that I created with MetaPost
+    cairo_save(cr);
+    cairo_scale(cr,0.005,-0.005); // TBD - figure out the scaling.
+    if (ch == 'L')
+    {
+      cairo_scale(cr,-1,1);
+      // cairo_translate(cr,-120,0);  // Keep glyph protruding to the right.
+    }
+    cairo_translate(cr, 20,-50);
+    cairo_move_to(cr, 0, 175);
+    cairo_curve_to(cr, 25.69278, 175, 53.912, 177.59557, 71.25053, 158.75053);
+    cairo_curve_to(cr, 103.52599, 123.67075, 64.54437, 77.19373, 34.99985, 34.99985);
+    cairo_set_line_width(cr, 25);
+    cairo_stroke(cr);
+
+    cairo_move_to(cr,0,0);
+    cairo_line_to(cr,75,0);
+    cairo_line_to(cr,0,75);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+    cairo_restore(cr);
+  }
+  return CAIRO_STATUS_SUCCESS;
+}
 
 static gboolean
 _paps_arg_paper_cb(const char *option_name,
@@ -205,6 +248,53 @@ _paps_arg_paper_cb(const char *option_name,
     }
   
   return retval;
+}
+
+static gboolean
+parse_enum (GType       type,
+            int        *value,
+            const char *name,
+            const char *arg,
+            gpointer    data G_GNUC_UNUSED,
+            GError **error)
+{
+  char *possible_values = NULL;
+  gboolean ret;
+
+  ret = pango_parse_enum (type,
+                          arg,
+                          value,
+                          FALSE,
+                          &possible_values);
+
+  if (!ret && error)
+    {
+      g_set_error(error,
+                  G_OPTION_ERROR,
+                  G_OPTION_ERROR_BAD_VALUE,
+                  "Argument for %s must be one of %s",
+                  name,
+                  possible_values);
+    }
+
+  g_free (possible_values);
+
+  return ret;
+}
+
+static gboolean
+parse_wrap (const char *name,
+            const char *arg,
+            gpointer    data,
+            GError    **error)
+{
+  gboolean ret;
+  if ((ret = parse_enum (PANGO_TYPE_WRAP_MODE, (int*)(void*)&opt_wrap,
+                         name, arg, data, error)))
+    {
+      opt_wrap_set = TRUE;
+    }
+  return ret;
 }
 
 static gboolean
@@ -278,6 +368,7 @@ _paps_arg_format_cb(const char *option_name,
   
   if (value && *value)
     {
+      output_format_set = TRUE;
       if (g_ascii_strcasecmp(value, "pdf") == 0)
         output_format = FORMAT_PDF;
       else if (g_ascii_strcasecmp(value, "ps") == 0
@@ -301,8 +392,8 @@ _paps_arg_format_cb(const char *option_name,
 
 static gboolean
 _paps_arg_lpi_cb(const gchar *option_name,
-		 const gchar *value,
-		 gpointer     data)
+                 const gchar *value,
+                 gpointer     data)
 {
   gboolean retval = TRUE;
   gchar *p = NULL;
@@ -329,8 +420,8 @@ _paps_arg_lpi_cb(const gchar *option_name,
 
 static gboolean
 _paps_arg_cpi_cb(const gchar *option_name,
-		 const gchar *value,
-		 gpointer     data)
+                 const gchar *value,
+                 gpointer     data)
 {
   gboolean retval = TRUE;
   gchar *p = NULL;
@@ -389,7 +480,7 @@ int main(int argc, char *argv[])
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
   gboolean do_encoding_from_lang = FALSE;
-  gboolean do_wordwrap = TRUE; // What should be default?
+  gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
   int num_columns = 1;
   int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
   gboolean do_fatal_warnings = FALSE;
@@ -415,6 +506,10 @@ int main(int argc, char *argv[])
      "Do rtl layout.", NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
      "Justify the layout.", NULL},
+    {"wrap",            0, 0, G_OPTION_ARG_CALLBACK,                    &parse_wrap,
+     "Text wrapping mode (Default is word-char)",   "word/char/word-char"},
+    {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
+     "Show characters for wrapping.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
      "letter, a3, a4. (Default: a4)", "PAPER"},
@@ -479,7 +574,11 @@ int main(int argc, char *argv[])
 
   /* Set locale from environment */
   setlocale(LC_ALL, "");
-  
+
+  /* Setup the paps glyph face */
+  paps_glyph_face = cairo_user_font_face_create();
+  cairo_user_font_face_set_render_glyph_func(paps_glyph_face, paps_render_glyph);
+
   /* Init page_layout_t parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0;
 
@@ -535,6 +634,16 @@ int main(int argc, char *argv[])
   /* Page layout */
   page_width = paper_sizes[(int)paper_type].width;
   page_height = paper_sizes[(int)paper_type].height;
+
+  /* Deduce output format from file name if not explicitely set */
+  if (!output_format_set && output != NULL)
+    {
+      if (g_str_has_suffix(output, ".svg") || g_str_has_suffix(output, ".SVG"))
+        output_format = FORMAT_SVG;
+      else if (g_str_has_suffix(output, ".pdf") || g_str_has_suffix(output, ".PDF"))
+        output_format = FORMAT_PDF;
+      /* Otherwise keep postscript default */
+    }
   
   /* Swap width and height for landscape except for postscript */
   surface_page_width = page_width;
@@ -546,10 +655,22 @@ int main(int argc, char *argv[])
     }
         
   if (output_format == FORMAT_POSTSCRIPT)
+  {
     surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
                                                  NULL,
                                                  surface_page_width,
                                                  surface_page_height);
+    if (page_layout.do_duplex)
+      {
+        cairo_ps_surface_dsc_comment(surface, "%%Requirements: duplex");
+        cairo_ps_surface_dsc_begin_setup(surface);
+        if (page_layout.do_tumble)
+          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexTumble");
+        else
+          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
+      }
+    cairo_ps_surface_dsc_begin_page_setup (surface);
+  }
   else if (output_format == FORMAT_PDF)
     surface = cairo_pdf_surface_create_for_stream(&paps_cairo_write_func,
                                                   NULL,
@@ -570,7 +691,7 @@ int main(int argc, char *argv[])
   pango_context_set_language (pango_context, get_language ());
   pango_context_set_base_dir (pango_context, pango_dir);
   pango_context_set_language (pango_context,
-			      opt_language
+                              opt_language
                               ? pango_language_from_string (opt_language)
                               : pango_language_get_default ());
   pango_context_set_base_gravity (pango_context, gravity);
@@ -583,6 +704,8 @@ int main(int argc, char *argv[])
   if ((pango_font_description_get_set_fields (font_description) & PANGO_FONT_MASK_SIZE) == 0)
     pango_font_description_set_size (font_description, atoi(DEFAULT_FONT_SIZE) * PANGO_SCALE);
 
+  // Keep the font size for the wrap character.
+  glyph_font_size = pango_font_description_get_size(font_description) / PANGO_SCALE;
   pango_context_set_font_description (pango_context, font_description);
 
   if (num_columns == 1)
@@ -619,7 +742,7 @@ int main(int argc, char *argv[])
   page_layout.header_ypos = page_layout.top_margin;
   page_layout.header_height = 0;
   page_layout.footer_height = 0;
-  page_layout.do_wordwrap = do_wordwrap;
+  page_layout.do_show_wrap = do_show_wrap;
   page_layout.scale_x = 1.0L;
   page_layout.scale_y = 1.0L;
   if (do_draw_header)
@@ -656,7 +779,7 @@ int main(int argc, char *argv[])
       max_width = pango_font_metrics_get_approximate_char_width (metrics);
       w = pango_font_metrics_get_approximate_digit_width (metrics);
       if (w > max_width)
-	  max_width = w;
+          max_width = w;
       page_layout.scale_x = 1 / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
@@ -664,6 +787,7 @@ int main(int argc, char *argv[])
       font_size = pango_font_description_get_size (font_description);
       // update the font size to that width
       pango_font_description_set_size (font_description, font_size * page_layout.scale_x);
+      glyph_font_size = font_size * page_layout.scale_x / PANGO_SCALE;
       pango_context_set_font_description (pango_context, font_description);
     }
 
@@ -673,10 +797,10 @@ int main(int argc, char *argv[])
     {
       encoding = g_strdup(nl_langinfo(CODESET));
       if (!strcmp(encoding, "UTF-8"))
-	{
-	  g_free(encoding);
-	  encoding = NULL;
-	}
+        {
+          g_free(encoding);
+          encoding = NULL;
+        }
     }
 
   if (encoding != NULL)
@@ -734,7 +858,7 @@ read_file (FILE   *file,
         {
           fprintf(stderr, "%s: Error reading file.\n", g_get_prgname ());
           g_string_free (inbuf, TRUE);
-	  exit(1);
+          exit(1);
         }
       else if (bp == NULL)
         break;
@@ -748,7 +872,7 @@ read_file (FILE   *file,
           if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == (gsize)-1)
             {
               fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
-	      exit(1);
+              exit(1);
             }
           obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
         }
@@ -791,6 +915,8 @@ split_text_into_paragraphs (cairo_t *cr,
   if (page_layout->do_use_markup)
     {
       Paragraph *para = g_new (Paragraph, 1);
+      para->wrapped = FALSE; /* No wrapped chars for markups */
+      para->clipped = FALSE;
       para->text = text;
       para->length = strlen(text);
       para->layout = pango_cairo_create_layout(cr); // pango_layout_new (pango_context);
@@ -800,12 +926,10 @@ split_text_into_paragraphs (cairo_t *cr,
       pango_layout_set_alignment (para->layout,
                                   page_layout->pango_dir == PANGO_DIRECTION_LTR
                                       ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
-      if (page_layout->do_wordwrap) {
-        pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
-        pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
-      } else {
-        pango_layout_set_width (para->layout, -1);
-      }
+
+      pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+      pango_layout_set_wrap (para->layout, opt_wrap);
+
       para->height = 0;
       
       result = g_list_prepend (result, para);
@@ -825,93 +949,96 @@ split_text_into_paragraphs (cairo_t *cr,
           if (!*p || !wc || wc == '\n' || wc == '\f')
             {
               Paragraph *para = g_new (Paragraph, 1);
+              para->wrapped = FALSE;
+              para->clipped = FALSE;
               para->text = last_para;
               para->length = p - last_para;
               para->layout = pango_layout_new (pango_context);
-	      if (page_layout->cpi > 0.0L && page_layout->do_wordwrap)
-		{
-		  /* figuring out the correct width from the pango_font_metrics_get_approximate_width()
-		   * is really hard and pango_layout_set_wrap() doesn't work properly then.
-		   * Those are not reliable to render the characters exactly according to the given CPI.
-		   * So re-calculate the widdth to wrap up to be comfortable with CPI.
-		   */
-		  wchar_t *wtext = NULL, *wnewtext = NULL;
-		  gchar *newtext = NULL;
-		  gsize len, col, i, wwidth = 0;
-		  PangoRectangle ink_rect, logical_rect;
+              if (page_layout->cpi > 0.0L)
+                {
+                  /* figuring out the correct width from the pango_font_metrics_get_approximate_width()
+                   * is really hard and pango_layout_set_wrap() doesn't work properly then.
+                   * Those are not reliable to render the characters exactly according to the given CPI.
+                   * So re-calculate the width to wrap up to be comfortable with CPI.
+                   */
+                  wchar_t *wtext = NULL, *wnewtext = NULL;
+                  gchar *newtext = NULL;
+                  gsize len, col, i, wwidth = 0;
+                  PangoRectangle ink_rect, logical_rect;
 
-		  wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
-		  if (wtext == NULL)
-		    {
-		      fprintf (stderr, "%s: Unable to convert UTF-8 to UCS-4.\n", g_get_prgname ());
-		    fail:
-		      g_free (wtext);
-		      g_free (wnewtext);
-		      g_free (newtext);
-		      exit (1);
-		    }
-		  len = g_utf8_strlen (para->text, para->length);
-		  /* the amount of characters that can be put on the line against CPI */
-		  col = page_layout->column_width / 72.0 * page_layout->cpi;
-		  if (len > col)
-		    {
-		      /* need to wrap them up */
-		      wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
-		      if (wnewtext == NULL)
-			{
-			  fprintf (stderr, "%s: Unable to allocate the memory.\n", g_get_prgname ());
-			  goto fail;
-			}
-		      for (i = 0; i < len; i++)
-			{
-			  gssize w = wcwidth (wtext[i]);
+                  wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
+                  if (wtext == NULL)
+                    {
+                      fprintf (stderr, "%s: Unable to convert UTF-8 to UCS-4.\n", g_get_prgname ());
+                    fail:
+                      g_free (wtext);
+                      g_free (wnewtext);
+                      g_free (newtext);
+                      exit (1);
+                    }
+                  len = g_utf8_strlen (para->text, para->length);
+                  /* the amount of characters that can be put on the line against CPI */
+                  col = page_layout->column_width / 72.0 * page_layout->cpi;
+                  if (len > col)
+                    {
+                      /* need to wrap them up */
+                      wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
+                      para->clipped = TRUE;
+                      if (wnewtext == NULL)
+                        {
+                          fprintf (stderr, "%s: Unable to allocate the memory.\n", g_get_prgname ());
+                          goto fail;
+                        }
+                      for (i = 0; i < len; i++)
+                        {
+                          gssize w = wcwidth (wtext[i]);
 
-			  if (w >= 0)
-			    wwidth += w;
-			  if (wwidth > col)
-			    break;
-			  wnewtext[i] = wtext[i];
-			}
-		      wnewtext[i] = 0L;
+                          if (w >= 0)
+                            wwidth += w;
+                          if (wwidth > col)
+                            break;
+                          wnewtext[i] = wtext[i];
+                        }
+                      wnewtext[i] = 0L;
 
-		      newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
-		      if (newtext == NULL)
-			{
-			  fprintf (stderr, "%s: Unable to convert UCS-4 to UTF-8.\n", g_get_prgname ());
-			  goto fail;
-			}
-		      pango_layout_set_text (para->layout, newtext, -1);
-		      pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
-		      paint_width = logical_rect.width / PANGO_SCALE;
-		      g_free (wnewtext);
-		      g_free (newtext);
+                      newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
+                      if (newtext == NULL)
+                        {
+                          fprintf (stderr, "%s: Unable to convert UCS-4 to UTF-8.\n", g_get_prgname ());
+                          goto fail;
+                        }
+                      pango_layout_set_text (para->layout, newtext, -1);
+                      pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
+                      paint_width = logical_rect.width / PANGO_SCALE;
+                      g_free (wnewtext);
+                      g_free (newtext);
 
-		      para->length = i;
-		      next = g_utf8_offset_to_pointer (para->text, para->length);
-		      wc = g_utf8_get_char (g_utf8_prev_char (next));
-		    }
-		  else
-		    {
-		      pango_layout_set_text (para->layout, para->text, para->length);
-		    }
-		  g_free (wtext);
+                      para->length = i;
+                      next = g_utf8_offset_to_pointer (para->text, para->length);
+                      wc = g_utf8_get_char (g_utf8_prev_char (next));
+                    }
+                  else
+                    {
+                      pango_layout_set_text (para->layout, para->text, para->length);
+                    }
 
-		  pango_layout_set_width (para->layout, -1);
-		}
-	      else
-		{
-		  pango_layout_set_text (para->layout, para->text, para->length);
-		  if (page_layout->do_wordwrap)
-		    {
-		      pango_layout_set_wrap (para->layout, PANGO_WRAP_WORD_CHAR);
-		      pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
-		    }
-		  else
-		    {
-		      pango_layout_set_width (para->layout, -1);
-		    }
-		}
-		  
+                  g_free (wtext);
+
+                  pango_layout_set_width (para->layout, -1);
+                }
+              else
+                {
+                  pango_layout_set_text (para->layout, para->text, para->length);
+                  pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
+
+                  pango_layout_set_wrap (para->layout, opt_wrap);
+
+                  if (opt_wrap == PANGO_WRAP_CHAR)
+                      para->wrapped = TRUE;                    
+
+                  /* Should we support truncation as well? */
+                }
+                  
               pango_layout_set_justify (para->layout, page_layout->do_justify);
               pango_layout_set_alignment (para->layout,
                                           page_layout->pango_dir == PANGO_DIRECTION_LTR
@@ -943,7 +1070,7 @@ split_text_into_paragraphs (cairo_t *cr,
  */
 GList *
 split_paragraphs_into_lines(page_layout_t *page_layout,
-			    GList         *paragraphs)
+                            GList         *paragraphs)
 {
   GList *line_list = NULL;
   int max_height = 0;
@@ -967,6 +1094,7 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
           
           line_link = g_new(LineLink, 1);
           line_link->formfeed = 0;
+          line_link->wrapped = (para->wrapped && i < para_num_lines - 1) || (para->clipped);
           line_link->pango_line = pango_layout_get_line(para->layout, i);
           pango_layout_line_get_extents(line_link->pango_line,
                                         &ink_rect, &logical_rect);
@@ -975,8 +1103,8 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
               line_link->formfeed = 1;
           line_link->ink_rect = ink_rect;
           line_list = g_list_prepend(line_list, line_link);
-	  if (logical_rect.height > max_height)
-	      max_height = logical_rect.height;
+          if (logical_rect.height > max_height)
+              max_height = logical_rect.height;
         }
 
       par_list = par_list->next;
@@ -1013,6 +1141,7 @@ output_pages(cairo_surface_t *surface,
     {
       LineLink *line_link = pango_lines->data;
       PangoLayoutLine *line = line_link->pango_line;
+      gboolean draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
       
       /* Check if we need to move to next column */
       if ((column_y_pos + line_link->logical_rect.height
@@ -1040,14 +1169,15 @@ output_pages(cairo_surface_t *surface,
             }
         }
       if (page_layout->lpi > 0.0L)
-	height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+        height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
       else
-	height = line_link->logical_rect.height;
+        height = line_link->logical_rect.height;
       draw_line_to_page(cr,
                         column_idx,
                         column_y_pos+height,
                         page_layout,
-                        line);
+                        line,
+                        draw_wrap_character);
       column_y_pos += height;
       pango_lines = pango_lines->next;
       prev_line_link = line_link;
@@ -1125,7 +1255,8 @@ draw_line_to_page(cairo_t *cr,
                   int column_idx,
                   int column_pos,
                   page_layout_t *page_layout,
-                  PangoLayoutLine *line)
+                  PangoLayoutLine *line,
+                  gboolean draw_wrap_character)
 {
   /* Assume square aspect ratio for now */
   double y_pos = page_layout->top_margin
@@ -1154,6 +1285,27 @@ draw_line_to_page(cairo_t *cr,
 
   cairo_move_to(cr, x_pos, y_pos);
   pango_cairo_show_layout_line(cr, line);
+
+  if (draw_wrap_character)
+    {
+      cairo_set_font_face(cr, paps_glyph_face);
+      cairo_set_font_size(cr, glyph_font_size);
+
+      if (page_layout->pango_dir == PANGO_DIRECTION_LTR)
+        {
+          cairo_move_to(cr, x_pos + page_layout->column_width, y_pos);
+          cairo_show_text(cr, "R");
+        }
+      else
+        {
+          double left_margin = page_layout->left_margin
+            + (page_layout->num_columns-1-column_idx)
+            * (page_layout->column_width + page_layout->gutter_width);
+
+          cairo_move_to(cr, left_margin, y_pos); 
+          cairo_show_text(cr, "L");
+        }
+    }
 }
 
 int
