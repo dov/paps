@@ -487,6 +487,7 @@ int main(int argc, char *argv[])
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
   gchar *output = NULL;
+  gchar *htitle = NULL;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
@@ -531,6 +532,8 @@ int main(int argc, char *argv[])
      "Set left margin. (Default: 36)", "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
      "Draw page header for each page.", NULL},
+    {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
+     "Title string for page header (instead of filename/stdin).", "TITLE"},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
      "Assume the documentation encoding.", "ENCODING"},
     {"lang-encoding", 0, 0, G_OPTION_ARG_NONE, &do_encoding_from_lang,
@@ -765,7 +768,10 @@ int main(int argc, char *argv[])
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
-  page_layout.filename = filename_in;
+  if (htitle)
+     page_layout.filename = htitle;
+  else
+     page_layout.filename = filename_in;
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
