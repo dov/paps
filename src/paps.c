@@ -99,7 +99,7 @@ typedef struct {
   gboolean do_use_markup;
   gboolean do_stretch_chars;
   PangoDirection pango_dir;
-  const gchar *filename;
+  const gchar *title;
   const gchar *header_font_desc;
   gdouble lpi;
   gdouble cpi;
@@ -769,9 +769,9 @@ int main(int argc, char *argv[])
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
   if (htitle)
-     page_layout.filename = htitle;
+     page_layout.title = htitle;
   else
-     page_layout.filename = filename_in;
+     page_layout.title = filename_in;
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
@@ -1343,7 +1343,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
                            page_layout->header_font_desc,
                            date,
                            page_layout->header_font_desc,
-                           page_layout->filename,
+                           page_layout->title,
                            page_layout->header_font_desc,
                            page);
   pango_layout_set_markup(layout, header, -1);
