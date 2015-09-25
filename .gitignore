@@ -1,0 +1,15 @@
+Makefile
+Makefile.in
+/aclocal.m4
+/config.log
+/config.status
+src/.deps
+/src/.sconsign.dblite
+*.o
+/src/paps
+/configure
+config/
+autom4te.cache
+*.pdf
+*.ps
+*.svg
