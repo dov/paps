@@ -99,7 +99,7 @@ typedef struct {
   gboolean do_use_markup;
   gboolean do_stretch_chars;
   PangoDirection pango_dir;
-  const gchar *filename;
+  const gchar *title;
   const gchar *header_font_desc;
   gdouble lpi;
   gdouble cpi;
@@ -487,6 +487,7 @@ int main(int argc, char *argv[])
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
   gchar *output = NULL;
+  gchar *htitle = NULL;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
@@ -531,6 +532,8 @@ int main(int argc, char *argv[])
      "Set left margin. (Default: 36)", "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
      "Draw page header for each page.", NULL},
+    {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
+     "Title string for page header (instead of filename/stdin).", "TITLE"},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
      "Assume the documentation encoding.", "ENCODING"},
     {"lang-encoding", 0, 0, G_OPTION_ARG_NONE, &do_encoding_from_lang,
@@ -765,7 +768,10 @@ int main(int argc, char *argv[])
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
-  page_layout.filename = filename_in;
+  if (htitle)
+     page_layout.title = htitle;
+  else
+     page_layout.title = filename_in;
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
@@ -1337,7 +1343,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
                            page_layout->header_font_desc,
                            date,
                            page_layout->header_font_desc,
-                           page_layout->filename,
+                           page_layout->title,
                            page_layout->header_font_desc,
                            page);
   pango_layout_set_markup(layout, header, -1);
