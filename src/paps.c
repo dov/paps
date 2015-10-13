@@ -812,7 +812,7 @@ int main(int argc, char *argv[])
   if (encoding != NULL)
     {
       cvh = g_iconv_open ("UTF-8", encoding);
-      if (cvh == NULL)
+      if (cvh == (GIConv)-1)
         {
           fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
           exit(1);
