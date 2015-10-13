@@ -20,7 +20,6 @@
  *
  */
 
-
 #include <pango/pango.h>
 #include <pango/pangoft2.h>
 #include <pango/pangocairo.h>
@@ -44,6 +43,12 @@
 #define HEADER_FONT_FAMILY      "Monospace Bold"
 #define HEADER_FONT_SCALE       "12"
 #define MAKE_FONT_NAME(f,s)     f " " s
+
+/*
+ * Cairo sets limit on the comment line for cairo_ps_surface_dsc_comment() to
+ * 255 characters, including the initial percent characters.
+ */
+#define	CAIRO_COMMENT_MAX       255
 
 typedef enum {
     PAPER_TYPE_A4 = 0,
@@ -167,6 +172,8 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             page_layout_t   *page_layout,
                                             PangoContext    *ctx,
                                             int              page);
+void          postscript_dsc_comments      (cairo_surface_t *surface,
+                                            page_layout_t   *page_layout);
 
 int last_char_idx = 0;
 double last_pos_y = -1;
@@ -658,22 +665,10 @@ int main(int argc, char *argv[])
     }
         
   if (output_format == FORMAT_POSTSCRIPT)
-  {
     surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
                                                  NULL,
                                                  surface_page_width,
                                                  surface_page_height);
-    if (page_layout.do_duplex)
-      {
-        cairo_ps_surface_dsc_comment(surface, "%%Requirements: duplex");
-        cairo_ps_surface_dsc_begin_setup(surface);
-        if (page_layout.do_tumble)
-          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexTumble");
-        else
-          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
-      }
-    cairo_ps_surface_dsc_begin_page_setup (surface);
-  }
   else if (output_format == FORMAT_PDF)
     surface = cairo_pdf_surface_create_for_stream(&paps_cairo_write_func,
                                                   NULL,
@@ -686,7 +681,7 @@ int main(int argc, char *argv[])
                                                   surface_page_height);
 
   cr = cairo_create(surface);
-  
+
   pango_context = pango_cairo_create_context(cr);
   pango_cairo_context_set_resolution(pango_context, 72.0); /* Native postscript resolution */
   
@@ -823,6 +818,9 @@ int main(int argc, char *argv[])
 
   if (encoding != NULL && cvh != NULL)
     g_iconv_close(cvh);
+
+  if (output_format == FORMAT_POSTSCRIPT)
+    postscript_dsc_comments(surface, &page_layout);
 
   paragraphs = split_text_into_paragraphs(cr,
                                           pango_context,
@@ -1125,6 +1123,62 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
   return g_list_reverse(line_list);
   
 }
+
+
+/*
+ * Define PostScript document header information.
+ */
+void
+postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
+{
+  char buf[CAIRO_COMMENT_MAX];
+  int x, y;
+
+  /*
+   * Title
+   */
+  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%Title: %s", pl->title);
+  cairo_ps_surface_dsc_comment (surface, buf);
+
+  /*
+   * Orientation
+   */
+  if (pl->do_landscape)
+    {
+      cairo_ps_surface_dsc_comment (surface, "%%Orientation: Landscape");
+      x = (int)pl->page_height;
+      y = (int)pl->page_width;
+    }
+  else
+    {
+      cairo_ps_surface_dsc_comment (surface, "%%Orientation: Portrait");
+      x = (int)pl->page_width;
+      y = (int)pl->page_height;
+    }
+
+  /*
+   * Redefine BoundingBox to cover the whole paper. Cairo creates the entry
+   * based on the text only. This may affect further processing, such as with
+   * convert(1).
+   */
+  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%BoundingBox: 0 0 %d %d", x, y);
+  cairo_ps_surface_dsc_comment (surface, buf);
+
+  /*
+   * Duplex
+   */
+  if (pl->do_duplex)
+    {
+      cairo_ps_surface_dsc_comment(surface, "%%Requirements: duplex");
+      cairo_ps_surface_dsc_begin_setup(surface);
+
+      if (pl->do_tumble)
+        cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexTumble");
+      else
+        cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
+    }
+}
+
 
 int
 output_pages(cairo_surface_t *surface,
