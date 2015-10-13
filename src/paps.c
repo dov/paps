@@ -141,7 +141,7 @@ struct _Paragraph {
 GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
                                             GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
-                                            GIConv           handle);
+                                            gchar           *encoding);
 static GList *split_text_into_paragraphs   (cairo_t *cr,
                                             PangoContext    *pango_context,
                                             page_layout_t   *page_layout,
@@ -576,7 +576,6 @@ int main(int argc, char *argv[])
   gchar *text;
   int header_sep = 20;
   int max_width = 0, w;
-  GIConv cvh = NULL;
   GOptionGroup *options;
   cairo_t *cr;
   cairo_surface_t *surface = NULL;
@@ -804,20 +803,7 @@ int main(int argc, char *argv[])
         }
     }
 
-  if (encoding != NULL)
-    {
-      cvh = g_iconv_open ("UTF-8", encoding);
-      if (cvh == (GIConv)-1)
-        {
-          fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
-          exit(1);
-        }
-    }
-
-  text = read_file(IN, cvh);
-
-  if (encoding != NULL && cvh != NULL)
-    g_iconv_close(cvh);
+  text = read_file(IN, encoding);
 
   if (output_format == FORMAT_POSTSCRIPT)
     postscript_dsc_comments(surface, &page_layout);
@@ -846,11 +832,23 @@ int main(int argc, char *argv[])
  */
 static char *
 read_file (FILE   *file,
-           GIConv  handle)
+           gchar  *encoding)
 {
   GString *inbuf;
   char *text;
   char buffer[BUFSIZE];
+  GIConv cvh = NULL;
+
+
+  if (encoding != NULL)
+    {
+      cvh = g_iconv_open ("UTF-8", encoding);
+      if (cvh == (GIConv)-1)
+        {
+          fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
+          exit(1);
+        }
+    }
 
   inbuf = g_string_new (NULL);
   while (1)
@@ -867,13 +865,13 @@ read_file (FILE   *file,
       else if (bp == NULL)
         break;
 
-      if (handle != NULL)
+      if (cvh != NULL)
         {
           ib = bp;
           iblen = strlen (ib);
           ob = bp = obuffer;
           oblen = BUFSIZE * 6 - 1;
-          if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == (gsize)-1)
+          if (g_iconv (cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1)
             {
               fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
               exit(1);
@@ -891,6 +889,9 @@ read_file (FILE   *file,
 
   text = inbuf->str;
   g_string_free (inbuf, FALSE);
+
+  if (encoding != NULL && cvh != NULL)
+    g_iconv_close(cvh);
 
   return text;
 }
