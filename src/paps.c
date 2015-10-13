@@ -423,6 +423,20 @@ get_language(void)
   return retval;
 }
 
+/*
+ * Return codeset name of the environment's locale.
+ */
+static char*
+get_encoding()
+{
+  static char *encoding = NULL;
+
+  if (encoding == NULL)
+    encoding = nl_langinfo(CODESET);
+
+  return encoding;
+}
+
 static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
                                             const unsigned char *data,
                                             unsigned int length)
@@ -436,7 +450,6 @@ int main(int argc, char *argv[])
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
-  gboolean do_encoding_from_lang = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
@@ -494,9 +507,7 @@ int main(int argc, char *argv[])
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
      "Title string for page header (instead of filename/stdin).", "TITLE"},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
-     "Assume the documentation encoding.", "ENCODING"},
-    {"lang-encoding", 0, 0, G_OPTION_ARG_NONE, &do_encoding_from_lang,
-     "Determine the encoding from the language setting. (Default: no)", NULL},
+     "Assume encoding of input text.", "ENCODING"},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
      "Set the amount of lines per inch.", "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
@@ -744,16 +755,9 @@ int main(int argc, char *argv[])
     }
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
-      
-  if (do_encoding_from_lang && encoding == NULL)
-    {
-      encoding = g_strdup(nl_langinfo(CODESET));
-      if (!strcmp(encoding, "UTF-8"))
-        {
-          g_free(encoding);
-          encoding = NULL;
-        }
-    }
+
+  if (encoding == NULL)
+    encoding = get_encoding();
 
   text = read_file(IN, encoding);
 
