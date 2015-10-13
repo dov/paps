@@ -181,7 +181,6 @@ static gboolean output_format_set = FALSE;
 static output_format_t output_format = FORMAT_POSTSCRIPT;
 static PangoGravity gravity = PANGO_GRAVITY_AUTO;
 static PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
-static const char *opt_language = NULL;
 static PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
 static cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
 static double glyph_font_size = -1;
@@ -403,25 +402,6 @@ _paps_arg_cpi_cb(const gchar *option_name,
   return retval;
 }
 
-static PangoLanguage *
-get_language(void)
-{
-  PangoLanguage *retval;
-  gchar *lang = g_strdup (setlocale (LC_CTYPE, NULL));
-  gchar *p;
-
-  p = strchr (lang, '.');
-  if (p)
-    *p = 0;
-  p = strchr (lang, '@');
-  if (p)
-    *p = 0;
-
-  retval = pango_language_from_string (lang);
-  g_free (lang);
-
-  return retval;
-}
 
 /*
  * Return codeset name of the environment's locale.
@@ -492,8 +472,6 @@ int main(int argc, char *argv[])
      "Gravity hint. Known gravity hints are: natural, strong, line. Default is natural.", "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
      "Choose output format. Known formats are pdf, svg, ps. (Default: ps)", "FORMAT"},
-    {"language", 0, 0, G_OPTION_ARG_STRING, &opt_language,
-     "Language to use for font selection", "en_US/etc"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
      "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
@@ -648,12 +626,8 @@ int main(int argc, char *argv[])
   pango_cairo_context_set_resolution(pango_context, 72.0); /* Native postscript resolution */
   
   /* Setup pango */
-  pango_context_set_language (pango_context, get_language ());
   pango_context_set_base_dir (pango_context, pango_dir);
-  pango_context_set_language (pango_context,
-                              opt_language
-                              ? pango_language_from_string (opt_language)
-                              : pango_language_get_default ());
+  pango_context_set_language (pango_context, pango_language_get_default ());
   pango_context_set_base_gravity (pango_context, gravity);
   pango_context_set_gravity_hint (pango_context, gravity_hint);
   
@@ -737,7 +711,7 @@ int main(int argc, char *argv[])
       gint font_size;
 
       fontmap = pango_ft2_font_map_new ();
-      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
+      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, pango_language_get_default());
       metrics = pango_fontset_get_metrics (fontset);
       max_width = pango_font_metrics_get_approximate_char_width (metrics);
       w = pango_font_metrics_get_approximate_digit_width (metrics);
