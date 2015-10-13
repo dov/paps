@@ -7,6 +7,8 @@ paps_LDADD = $(lib_LIBRARIES) $(all_libraries)
 paps_LDFLAGS = $(WARN_LDFLAGS) $(PANGO_LIBS)
 paps_DEPENDENCIES = $(lib_LIBRARIES)
 
+AM_CPPFLAGS = -DGETTEXT_PACKAGE='"$(GETTEXT_PACKAGE)"' -DDATADIR='"$(datadir)"'
+
 EXTRA_DIST = paps.1
 
 

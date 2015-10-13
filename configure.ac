@@ -15,4 +15,16 @@ AC_GNU_SOURCE
 PKG_PROG_PKG_CONFIG
 PKG_CHECK_MODULES([PANGO], [pangocairo pangoft2])
 
-AC_OUTPUT(Makefile src/Makefile)
+AC_PROG_INTLTOOL([0.23])
+
+GETTEXT_PACKAGE=paps
+AC_SUBST(GETTEXT_PACKAGE)
+AC_DEFINE_UNQUOTED([GETTEXT_PACKAGE], ["$GETTEXT_PACKAGE"], [Package name for gettext.])
+
+ALL_LINGUAS=""
+AM_GLIB_GNU_GETTEXT
+
+datadir='${prefix}/${DATADIRNAME}'
+AC_SUBST(datadir)
+
+AC_OUTPUT(Makefile src/Makefile po/Makefile.in)

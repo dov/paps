@@ -20,7 +20,6 @@
  *
  */
 
-
 #include <pango/pango.h>
 #include <pango/pangoft2.h>
 #include <pango/pangocairo.h>
@@ -38,12 +37,39 @@
 #include <math.h>
 #include <wchar.h>
 
+#if ENABLE_NLS
+#include <libintl.h>
+
+#define	_(str)		gettext(str)
+#ifdef gettext_noop
+#define N_(str)		gettext_noop(str)
+#else
+#define N_(str)		(str)
+#endif
+
+#else	/* NLS is disabled */
+#define _(str)		(str)
+#define N_(str)		(str)
+#endif
+
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY     "Monospace"
 #define DEFAULT_FONT_SIZE       "12"
 #define HEADER_FONT_FAMILY      "Monospace Bold"
 #define HEADER_FONT_SCALE       "12"
 #define MAKE_FONT_NAME(f,s)     f " " s
+
+/*
+ * Cairo sets limit on the comment line for cairo_ps_surface_dsc_comment() to
+ * 255 characters, including the initial percent characters.
+ */
+#define	CAIRO_COMMENT_MAX       255
+
+#define	MARGIN_LEFT     36
+#define	MARGIN_RIGHT    36
+#define	MARGIN_TOP      36
+#define	MARGIN_BOTTOM   36
+
 
 typedef enum {
     PAPER_TYPE_A4 = 0,
@@ -63,7 +89,7 @@ typedef struct  {
     double height;
 } paper_size_t;
 
-const paper_size_t paper_sizes[] = {
+static const paper_size_t paper_sizes[] = {
     { 595.28, 841.89}, /* A4 */
     { 612, 792},       /* US letter */
     { 612, 1008},      /* US legal */
@@ -106,11 +132,6 @@ typedef struct {
 } page_layout_t;
 
 typedef struct {
-  char *text;
-  int length;
-} para_t;
-
-typedef struct {
   PangoLayoutLine *pango_line;
   PangoRectangle logical_rect;
   PangoRectangle ink_rect;
@@ -133,10 +154,10 @@ struct _Paragraph {
 };
 
 /* Information passed in user data when drawing outlines */
-GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
+static GList *split_paragraphs_into_lines  (page_layout_t   *page_layout,
                                             GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
-                                            GIConv           handle);
+                                            gchar           *encoding);
 static GList *split_text_into_paragraphs   (cairo_t *cr,
                                             PangoContext    *pango_context,
                                             page_layout_t   *page_layout,
@@ -154,8 +175,7 @@ static void   eject_column                 (cairo_t         *cr,
 static void   eject_page                   (cairo_t         *cr);
 static void   start_page                   (cairo_surface_t *surface,
                                             cairo_t         *cr, 
-                                            page_layout_t   *page_layout,
-                                            int              page_idx);
+                                            page_layout_t   *page_layout);
 static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
@@ -167,28 +187,25 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             page_layout_t   *page_layout,
                                             PangoContext    *ctx,
                                             int              page);
+static void   postscript_dsc_comments      (cairo_surface_t *surface,
+                                            page_layout_t   *page_layout);
 
-int last_char_idx = 0;
-double last_pos_y = -1;
-double last_pos_x = -1;
 FILE *output_fh;
-paper_type_t paper_type = PAPER_TYPE_A4;
-gboolean output_format_set = FALSE;
-output_format_t output_format = FORMAT_POSTSCRIPT;
-PangoGravity gravity = PANGO_GRAVITY_AUTO;
-PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
-const char *opt_language = NULL;
-gboolean opt_wrap_set = FALSE;
-PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
-cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
-double glyph_font_size = -1;
+static paper_type_t paper_type = PAPER_TYPE_A4;
+static gboolean output_format_set = FALSE;
+static output_format_t output_format = FORMAT_POSTSCRIPT;
+static PangoGravity gravity = PANGO_GRAVITY_AUTO;
+static PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
+static PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
+static cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
+static double glyph_font_size = -1;
 
 /* Render function for paps glyphs */
-cairo_status_t
-paps_render_glyph(cairo_scaled_font_t *scaled_font,
-                 unsigned long  glyph,
-                 cairo_t *cr,
-                 cairo_text_extents_t *extents)
+static cairo_status_t
+paps_render_glyph(cairo_scaled_font_t *scaled_font G_GNUC_UNUSED,
+                  unsigned long glyph,
+                  cairo_t *cr,
+                  cairo_text_extents_t *extents)
 {
   char ch = (unsigned char)glyph;
 
@@ -238,12 +255,12 @@ _paps_arg_paper_cb(const char *option_name,
         paper_type = PAPER_TYPE_A3;
       else {
         retval = FALSE;
-        fprintf(stderr, "Unknown page size name: %s.\n", value);
+        fprintf(stderr, _("Unknown page size name: %s.\n"), value);
       }
     }
   else
     {
-      fprintf(stderr, "You must specify page size.\n");
+      fprintf(stderr, _("You must specify page size.\n"));
       retval = FALSE;
     }
   
@@ -272,7 +289,7 @@ parse_enum (GType       type,
       g_set_error(error,
                   G_OPTION_ERROR,
                   G_OPTION_ERROR_BAD_VALUE,
-                  "Argument for %s must be one of %s",
+                  _("Argument for %1$s must be one of %2$s"),
                   name,
                   possible_values);
     }
@@ -288,76 +305,30 @@ parse_wrap (const char *name,
             gpointer    data,
             GError    **error)
 {
-  gboolean ret;
-  if ((ret = parse_enum (PANGO_TYPE_WRAP_MODE, (int*)(void*)&opt_wrap,
-                         name, arg, data, error)))
-    {
-      opt_wrap_set = TRUE;
-    }
-  return ret;
+  return (parse_enum (PANGO_TYPE_WRAP_MODE, (int*)(void*)&opt_wrap,
+                      name, arg, data, error));
 }
 
 static gboolean
-_paps_arg_gravity_cb(const char *option_name,
-                     const char *value,
-                     gpointer    data)
+parse_gravity_hint (const char *name,
+                    const char *arg,
+                    gpointer    data,
+                    GError    **error)
 {
-  gboolean retval = TRUE;
-  
-  if (value && *value)
-    {
-      if (g_ascii_strcasecmp(value, "south") == 0)
-        gravity = PANGO_GRAVITY_SOUTH;
-      else if (g_ascii_strcasecmp(value, "east") == 0)
-        gravity = PANGO_GRAVITY_EAST;
-      else if (g_ascii_strcasecmp(value, "north") == 0)
-        gravity = PANGO_GRAVITY_NORTH;
-      else if (g_ascii_strcasecmp(value, "west") == 0)
-        gravity = PANGO_GRAVITY_WEST;
-      else if (g_ascii_strcasecmp(value, "auto") == 0)
-        gravity = PANGO_GRAVITY_AUTO;
-      else {
-        retval = FALSE;
-        fprintf(stderr, "Unknown gravity name: %s.\n", value);
-      }
-    }
-  else
-    {
-      fprintf(stderr, "You must specify gravity.\n");
-      retval = FALSE;
-    }
-  
-  return retval;
+  return (parse_enum (PANGO_TYPE_GRAVITY_HINT, (int*)(void*)&gravity_hint,
+                      name, arg, data, error));
 }
 
 static gboolean
-_paps_arg_gravity_hint_cb(const char *option_name,
-                          const char *value,
-                          gpointer    data)
+parse_gravity (const char *name,
+               const char *arg,
+               gpointer    data,
+               GError    **error)
 {
-  gboolean retval = TRUE;
-  
-  if (value && *value)
-    {
-      if (g_ascii_strcasecmp(value, "neutral") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
-      else if (g_ascii_strcasecmp(value, "strong") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_STRONG;
-      else if (g_ascii_strcasecmp(value, "line") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_LINE;
-      else {
-        retval = FALSE;
-        fprintf(stderr, "Unknown gravity hint name: %s.\n", value);
-      }
-    }
-  else
-    {
-      fprintf(stderr, "You must specify gravity hint.\n");
-      retval = FALSE;
-    }
-  
-  return retval;
+  return (parse_enum (PANGO_TYPE_GRAVITY, (int*)(void*)&gravity,
+                      name, arg, data, error));
 }
+
 
 static gboolean
 _paps_arg_format_cb(const char *option_name,
@@ -378,12 +349,12 @@ _paps_arg_format_cb(const char *option_name,
         output_format = FORMAT_SVG;
       else {
         retval = FALSE;
-        fprintf(stderr, "Unknown output format: %s.\n", value);
+        fprintf(stderr, _("Unknown output format: %s.\n"), value);
       }
     }
   else
     {
-      fprintf(stderr, "You must specify a output format.\n");
+      fprintf(stderr, _("You must specify a output format.\n"));
       retval = FALSE;
     }
   
@@ -405,13 +376,13 @@ _paps_arg_lpi_cb(const gchar *option_name,
       page_layout->lpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
-          fprintf(stderr, "given LPI value was invalid.\n");
+          fprintf(stderr, _("Given LPI value was invalid.\n"));
           retval = FALSE;
         }
     }
   else
     {
-      fprintf(stderr, "You must specify the amount of lines per inch.\n");
+      fprintf(stderr, _("You must specify the amount of lines per inch.\n"));
       retval = FALSE;
     }
 
@@ -433,40 +404,35 @@ _paps_arg_cpi_cb(const gchar *option_name,
       page_layout->cpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
-          fprintf(stderr, "given CPI value was invalid.\n");
+          fprintf(stderr, _("Given CPI value was invalid.\n"));
           retval = FALSE;
         }
     }
   else
     {
-      fprintf(stderr, "You must specify the amount of characters per inch.\n");
+      fprintf(stderr, _("You must specify the amount of characters per inch.\n"));
       retval = FALSE;
     }
 
   return retval;
 }
 
-static PangoLanguage *
-get_language(void)
+
+/*
+ * Return codeset name of the environment's locale.
+ */
+static char*
+get_encoding()
 {
-  PangoLanguage *retval;
-  gchar *lang = g_strdup (setlocale (LC_CTYPE, NULL));
-  gchar *p;
+  static char *encoding = NULL;
 
-  p = strchr (lang, '.');
-  if (p)
-    *p = 0;
-  p = strchr (lang, '@');
-  if (p)
-    *p = 0;
+  if (encoding == NULL)
+    encoding = nl_langinfo(CODESET);
 
-  retval = pango_language_from_string (lang);
-  g_free (lang);
-
-  return retval;
+  return encoding;
 }
 
-static cairo_status_t paps_cairo_write_func(void *closure,
+static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
                                             const unsigned char *data,
                                             unsigned int length)
 {
@@ -479,10 +445,11 @@ int main(int argc, char *argv[])
   gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
-  gboolean do_encoding_from_lang = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
   int num_columns = 1;
-  int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
+  int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
+      right_margin = MARGIN_RIGHT, left_margin = MARGIN_LEFT;
+
   gboolean do_fatal_warnings = FALSE;
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
@@ -492,58 +459,53 @@ int main(int argc, char *argv[])
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape,
-     "Landscape output. (Default: portrait)", NULL},
-    {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
-     "Whether to stretch characters in y-direction to fill lines. (Default: no)", NULL},
-    {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
-     "Should the text be considered pango markup? (Default: no)", NULL},
+     N_("Landscape output. (Default: portrait)"), NULL},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns,
-     "Number of columns output. (Default: 1)", "NUM"},
+     N_("Number of columns output. (Default: 1)"), "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font,
-     "Set the font description. (Default: Monospace 12)", "DESC"},
+     N_("Set font. (Default: Monospace 12)"), "DESC"},
     {"output", 'o', 0, G_OPTION_ARG_STRING, &output,
-     "Output file. (Default stdout)", "DESC"},
+     N_("Output file. (Default: stdout)"), "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl,
-     "Do rtl layout.", NULL},
+     N_("Do right-to-left text layout."), NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
-     "Justify the layout.", NULL},
-    {"wrap",            0, 0, G_OPTION_ARG_CALLBACK,                    &parse_wrap,
-     "Text wrapping mode (Default is word-char)",   "word/char/word-char"},
+     N_("Justify the layout."), NULL},
+    {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, &parse_wrap,
+     N_("Text wrapping mode [word, char, word-char]. (Default: word-char)"), "WRAP"},
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
-     "Show characters for wrapping.", NULL},
+     N_("Show characters for wrapping."), NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
-     "Choose paper size. Known paper sizes are legal,\n"
-     "letter, a3, a4. (Default: a4)", "PAPER"},
-    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_cb,
-     "Base gravity: glyph rotation. Defaut: auto", "GRAVITY"},
-    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_hint_cb,
-     "Gravity hint", "HINT"},
+     N_("Set paper size [legal, letter, a3, a4]. (Default: a4)"), "PAPER"},
+    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity,
+     N_("Base glyph rotation [south, west, north, east, auto]. (Defaut: auto)"), "GRAVITY"},
+    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity_hint,
+     N_("Base glyph orientation [natural, strong, line]. (Default: natural)"), "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
-     "Choose output format. Known formats are pdf, svg, ps. (Default ps)\n"},
-    {"language", 0, 0, G_OPTION_ARG_STRING, &opt_language,
-     "Language to use for font selection", "en_US/etc"},
+     N_("Set output format [pdf, svg, ps]. (Default: ps)"), "FORMAT"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
-     "Set bottom margin in postscript point units (1/72inch). (Default: 36)", "NUM"},
+     N_("Set bottom margin in postscript point units (1/72 inch). (Default: 36)"), "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
-     "Set top margin. (Default: 36)", "NUM"},
+     N_("Set top margin. (Default: 36)"), "NUM"},
     {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin,
-     "Set right margin. (Default: 36)", "NUM"},
+     N_("Set right margin. (Default: 36)"), "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin,
-     "Set left margin. (Default: 36)", "NUM"},
+     N_("Set left margin. (Default: 36)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
-     "Draw page header for each page.", NULL},
+     N_("Draw page header for each page."), NULL},
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
-     "Title string for page header (instead of filename/stdin).", "TITLE"},
+     N_("Title string for page header (Default: filename/stdin)."), "TITLE"},
+    {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
+     N_("Interpret input text as pango markup."), NULL},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
-     "Assume the documentation encoding.", "ENCODING"},
-    {"lang-encoding", 0, 0, G_OPTION_ARG_NONE, &do_encoding_from_lang,
-     "Determine the encoding from the language setting. (Default: no)", NULL},
+     N_("Assume encoding of input text. (Default: encoding of current locale)"), "ENCODING"},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
-     "Set the amount of lines per inch.", "REAL"},
+     N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
-     "Set the amount of characters per inch.", "REAL"},
+     N_("Set the amount of characters per inch."), "REAL"},
+    {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
+     N_("Stretch characters in y-direction to fill lines."), NULL},
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
-     "Set glib fatal warnings", "REAL"},
+     N_("Set glib fatal warnings"), "REAL"},
     
     {NULL}
 
@@ -569,14 +531,18 @@ int main(int argc, char *argv[])
   gchar *text;
   int header_sep = 20;
   int max_width = 0, w;
-  GIConv cvh = NULL;
   GOptionGroup *options;
   cairo_t *cr;
   cairo_surface_t *surface = NULL;
   double surface_page_width = 0, surface_page_height = 0;
 
   /* Set locale from environment */
-  setlocale(LC_ALL, "");
+  (void) setlocale(LC_ALL, "");
+
+  /* Setup i18n */
+  textdomain(GETTEXT_PACKAGE);
+  bindtextdomain(GETTEXT_PACKAGE, DATADIR "/locale");
+  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
 
   /* Setup the paps glyph face */
   paps_glyph_face = cairo_user_font_face_create();
@@ -587,6 +553,7 @@ int main(int argc, char *argv[])
 
   options = g_option_group_new("main","","",&page_layout, NULL);
   g_option_group_add_entries(options, entries);
+  g_option_group_set_translation_domain(options, GETTEXT_PACKAGE);
   g_option_context_set_main_group(ctxt, options);
 #if 0
   g_option_context_add_main_entries(ctxt, entries, NULL);
@@ -595,7 +562,7 @@ int main(int argc, char *argv[])
   /* Parse command line */
   if (!g_option_context_parse(ctxt, &argc, &argv, &error))
     {
-      fprintf(stderr, "Command line error: %s\n", error->message);
+      fprintf(stderr, _("Command line error: %s\n"), error->message);
       exit(1);
     }
   
@@ -611,7 +578,7 @@ int main(int argc, char *argv[])
       IN = fopen(filename_in, "r");
       if (!IN)
         {
-          fprintf(stderr, "Failed to open %s!\n", filename_in);
+          fprintf(stderr, _("Failed to open %s!\n"), filename_in);
           exit(1);
         }
     }
@@ -629,7 +596,7 @@ int main(int argc, char *argv[])
       output_fh = fopen(output,"wb");
       if (!output_fh)
         {
-          fprintf(stderr, "Failed to open %s for writing!\n", output);
+          fprintf(stderr, _("Failed to open %s for writing!\n"), output);
           exit(1);
         }
     }
@@ -658,22 +625,10 @@ int main(int argc, char *argv[])
     }
         
   if (output_format == FORMAT_POSTSCRIPT)
-  {
     surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
                                                  NULL,
                                                  surface_page_width,
                                                  surface_page_height);
-    if (page_layout.do_duplex)
-      {
-        cairo_ps_surface_dsc_comment(surface, "%%Requirements: duplex");
-        cairo_ps_surface_dsc_begin_setup(surface);
-        if (page_layout.do_tumble)
-          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexTumble");
-        else
-          cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
-      }
-    cairo_ps_surface_dsc_begin_page_setup (surface);
-  }
   else if (output_format == FORMAT_PDF)
     surface = cairo_pdf_surface_create_for_stream(&paps_cairo_write_func,
                                                   NULL,
@@ -686,17 +641,13 @@ int main(int argc, char *argv[])
                                                   surface_page_height);
 
   cr = cairo_create(surface);
-  
+
   pango_context = pango_cairo_create_context(cr);
   pango_cairo_context_set_resolution(pango_context, 72.0); /* Native postscript resolution */
   
   /* Setup pango */
-  pango_context_set_language (pango_context, get_language ());
   pango_context_set_base_dir (pango_context, pango_dir);
-  pango_context_set_language (pango_context,
-                              opt_language
-                              ? pango_language_from_string (opt_language)
-                              : pango_language_get_default ());
+  pango_context_set_language (pango_context, pango_language_get_default ());
   pango_context_set_base_gravity (pango_context, gravity);
   pango_context_set_gravity_hint (pango_context, gravity_hint);
   
@@ -717,7 +668,7 @@ int main(int argc, char *argv[])
     total_gutter_width = gutter_width * (num_columns - 1);
   if (do_landscape)
     {
-      int tmp;
+      double tmp;
       tmp = page_width;
       page_width = page_height;
       page_height = tmp;
@@ -753,11 +704,11 @@ int main(int argc, char *argv[])
   else
     page_layout.header_sep = 0;
     
-  page_layout.column_height = page_height
+  page_layout.column_height = (int)page_height
                             - page_layout.top_margin
                             - page_layout.header_sep
                             - page_layout.bottom_margin;
-  page_layout.column_width =  (page_layout.page_width 
+  page_layout.column_width =  ((int)page_layout.page_width
                             - page_layout.left_margin - page_layout.right_margin
                             - total_gutter_width) / page_layout.num_columns;
   page_layout.do_separation_line = TRUE;
@@ -780,7 +731,7 @@ int main(int argc, char *argv[])
       gint font_size;
 
       fontmap = pango_ft2_font_map_new ();
-      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, get_language ());
+      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, pango_language_get_default());
       metrics = pango_fontset_get_metrics (fontset);
       max_width = pango_font_metrics_get_approximate_char_width (metrics);
       w = pango_font_metrics_get_approximate_digit_width (metrics);
@@ -792,37 +743,20 @@ int main(int argc, char *argv[])
 
       font_size = pango_font_description_get_size (font_description);
       // update the font size to that width
-      pango_font_description_set_size (font_description, font_size * page_layout.scale_x);
+      pango_font_description_set_size (font_description, (int)(font_size * page_layout.scale_x));
       glyph_font_size = font_size * page_layout.scale_x / PANGO_SCALE;
       pango_context_set_font_description (pango_context, font_description);
     }
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
-      
-  if (do_encoding_from_lang && encoding == NULL)
-    {
-      encoding = g_strdup(nl_langinfo(CODESET));
-      if (!strcmp(encoding, "UTF-8"))
-        {
-          g_free(encoding);
-          encoding = NULL;
-        }
-    }
 
-  if (encoding != NULL)
-    {
-      cvh = g_iconv_open ("UTF-8", encoding);
-      if (cvh == NULL)
-        {
-          fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
-          exit(1);
-        }
-    }
+  if (encoding == NULL)
+    encoding = get_encoding();
 
-  text = read_file(IN, cvh);
+  text = read_file(IN, encoding);
 
-  if (encoding != NULL && cvh != NULL)
-    g_iconv_close(cvh);
+  if (output_format == FORMAT_POSTSCRIPT)
+    postscript_dsc_comments(surface, &page_layout);
 
   paragraphs = split_text_into_paragraphs(cr,
                                           pango_context,
@@ -848,38 +782,68 @@ int main(int argc, char *argv[])
  */
 static char *
 read_file (FILE   *file,
-           GIConv  handle)
+           gchar  *encoding)
 {
   GString *inbuf;
   char *text;
   char buffer[BUFSIZE];
+  GIConv cvh = NULL;
+  gsize inc_seq_bytes = 0;
+
+
+  if (encoding != NULL)
+    {
+      cvh = g_iconv_open ("UTF-8", encoding);
+      if (cvh == (GIConv)-1)
+        {
+          fprintf(stderr, _("%s: Invalid encoding: %s\n"), g_get_prgname (), encoding);
+          exit(1);
+        }
+    }
 
   inbuf = g_string_new (NULL);
   while (1)
     {
-      char *ib, *ob, obuffer[BUFSIZE * 6], *bp = fgets (buffer, BUFSIZE-1, file);
-      gsize iblen, oblen;
+      char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
+      gsize iblen, ibleft, oblen;
+
+      bp = fgets (buffer+inc_seq_bytes, BUFSIZE-inc_seq_bytes-1, file);
+      if (inc_seq_bytes)
+        inc_seq_bytes = 0;
 
       if (ferror (file))
         {
-          fprintf(stderr, "%s: Error reading file.\n", g_get_prgname ());
+          fprintf(stderr, _("%s: Error reading file.\n"), g_get_prgname ());
           g_string_free (inbuf, TRUE);
           exit(1);
         }
       else if (bp == NULL)
         break;
 
-      if (handle != NULL)
+      if (cvh != NULL)
         {
-          ib = bp;
+          ib = buffer;
           iblen = strlen (ib);
           ob = bp = obuffer;
           oblen = BUFSIZE * 6 - 1;
-          if (g_iconv (handle, &ib, &iblen, &ob, &oblen) == (gsize)-1)
+          if (g_iconv (cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1)
             {
-              fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
-              exit(1);
-            }
+              /*
+               * EINVAL - incomplete sequence at the end of the buffer. Move the
+               * incomplete sequence bytes to the beginning of the buffer for
+               * the next round of conversion.
+               */
+              if (errno == EINVAL)
+                {
+                  inc_seq_bytes = iblen;
+                  memmove (buffer, ib, inc_seq_bytes);
+                }
+              else
+                {
+                  fprintf (stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
+                  exit(1);
+                }
+             }
           obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
         }
       g_string_append (inbuf, bp);
@@ -893,6 +857,9 @@ read_file (FILE   *file,
 
   text = inbuf->str;
   g_string_free (inbuf, FALSE);
+
+  if (encoding != NULL && cvh != NULL)
+    g_iconv_close(cvh);
 
   return text;
 }
@@ -949,16 +916,19 @@ split_text_into_paragraphs (cairo_t *cr,
           next = g_utf8_next_char (p);
           if (wc == (gunichar)-1)
             {
-              fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
+              fprintf (stderr, _("%s: Invalid character in input\n"), g_get_prgname ());
               wc = 0;
             }
-          if (!*p || !wc || wc == '\n' || wc == '\f')
+          if (!*p || !wc || wc == '\r' || wc == '\n' || wc == '\f')
             {
               Paragraph *para = g_new (Paragraph, 1);
               para->wrapped = FALSE;
               para->clipped = FALSE;
               para->text = last_para;
               para->length = p - last_para;
+              /* handle dos line breaks */
+              if (wc == '\r' && *next == '\n')
+                  next = g_utf8_next_char(next);
               para->layout = pango_layout_new (pango_context);
               if (page_layout->cpi > 0.0L)
                 {
@@ -975,7 +945,7 @@ split_text_into_paragraphs (cairo_t *cr,
                   wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
                   if (wtext == NULL)
                     {
-                      fprintf (stderr, "%s: Unable to convert UTF-8 to UCS-4.\n", g_get_prgname ());
+                      fprintf (stderr, _("%s: Unable to convert UTF-8 to UCS-4.\n"), g_get_prgname ());
                     fail:
                       g_free (wtext);
                       g_free (wnewtext);
@@ -984,7 +954,7 @@ split_text_into_paragraphs (cairo_t *cr,
                     }
                   len = g_utf8_strlen (para->text, para->length);
                   /* the amount of characters that can be put on the line against CPI */
-                  col = page_layout->column_width / 72.0 * page_layout->cpi;
+                  col = (int)(page_layout->column_width / 72.0 * page_layout->cpi);
                   if (len > col)
                     {
                       /* need to wrap them up */
@@ -992,7 +962,7 @@ split_text_into_paragraphs (cairo_t *cr,
                       para->clipped = TRUE;
                       if (wnewtext == NULL)
                         {
-                          fprintf (stderr, "%s: Unable to allocate the memory.\n", g_get_prgname ());
+                          fprintf (stderr, _("%s: Unable to allocate the memory.\n"), g_get_prgname ());
                           goto fail;
                         }
                       for (i = 0; i < len; i++)
@@ -1010,7 +980,7 @@ split_text_into_paragraphs (cairo_t *cr,
                       newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
                       if (newtext == NULL)
                         {
-                          fprintf (stderr, "%s: Unable to convert UCS-4 to UTF-8.\n", g_get_prgname ());
+                          fprintf (stderr, _("%s: Unable to convert UCS-4 to UTF-8.\n"), g_get_prgname ());
                           goto fail;
                         }
                       pango_layout_set_text (para->layout, newtext, -1);
@@ -1123,6 +1093,62 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
   
 }
 
+
+/*
+ * Define PostScript document header information.
+ */
+void
+postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
+{
+  char buf[CAIRO_COMMENT_MAX];
+  int x, y;
+
+  /*
+   * Title
+   */
+  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%Title: %s", pl->title);
+  cairo_ps_surface_dsc_comment (surface, buf);
+
+  /*
+   * Orientation
+   */
+  if (pl->do_landscape)
+    {
+      cairo_ps_surface_dsc_comment (surface, "%%Orientation: Landscape");
+      x = (int)pl->page_height;
+      y = (int)pl->page_width;
+    }
+  else
+    {
+      cairo_ps_surface_dsc_comment (surface, "%%Orientation: Portrait");
+      x = (int)pl->page_width;
+      y = (int)pl->page_height;
+    }
+
+  /*
+   * Redefine BoundingBox to cover the whole paper. Cairo creates the entry
+   * based on the text only. This may affect further processing, such as with
+   * convert(1).
+   */
+  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%BoundingBox: 0 0 %d %d", x, y);
+  cairo_ps_surface_dsc_comment (surface, buf);
+
+  /*
+   * Duplex
+   */
+  if (pl->do_duplex)
+    {
+      cairo_ps_surface_dsc_comment(surface, "%%Requirements: duplex");
+      cairo_ps_surface_dsc_begin_setup(surface);
+
+      if (pl->do_tumble)
+        cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexTumble");
+      else
+        cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
+    }
+}
+
+
 int
 output_pages(cairo_surface_t *surface,
              cairo_t       *cr,
@@ -1138,7 +1164,7 @@ output_pages(cairo_surface_t *surface,
   int height = 0;
   LineLink *prev_line_link = NULL;
 
-  start_page(surface, cr, page_layout, page_idx);
+  start_page(surface, cr, page_layout);
 
   if (need_header)
     draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
@@ -1161,7 +1187,7 @@ output_pages(cairo_surface_t *surface,
               column_idx = 0;
               eject_page(cr);
               page_idx++;
-              start_page(surface, cr, page_layout, page_idx);
+              start_page(surface, cr, page_layout);
 
               if (need_header)
                 draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
@@ -1232,8 +1258,7 @@ void eject_page(cairo_t *cr)
 
 void start_page(cairo_surface_t *surface,
                 cairo_t *cr,
-                page_layout_t *page_layout,
-                int page_idx)
+                page_layout_t *page_layout)
 {
   cairo_identity_matrix(cr);
 
@@ -1245,8 +1270,8 @@ void start_page(cairo_surface_t *surface,
       if (output_format == FORMAT_POSTSCRIPT)
         {
           cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
-          cairo_translate(cr,page_layout->page_height, 0);
-          cairo_rotate(cr, M_PI/2);
+          cairo_translate(cr, 0, page_layout->page_width);
+          cairo_rotate(cr, 3*M_PI/2);
         }
     }
   else
@@ -1314,6 +1339,54 @@ draw_line_to_page(cairo_t *cr,
     }
 }
 
+/*
+ * Provide date string from current locale converted to UTF-8.
+ */
+char *
+get_date(char *date, int maxlen)
+{
+  time_t t;
+  GIConv cvh = NULL;
+  GString *inbuf;
+  char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
+  gsize iblen, oblen;
+  static char *date_utf8 = NULL;
+
+  if (date_utf8 == NULL) {
+    t = time(NULL);
+    strftime(date, maxlen, (char *)NULL, localtime(&t));
+
+    cvh = g_iconv_open("UTF-8", get_encoding());
+    if (cvh == (GIConv)-1) {
+      fprintf(stderr, _("%s: Invalid encoding: %s\n"), g_get_prgname(), get_encoding());
+      exit(1);
+    }
+
+    inbuf = g_string_new(NULL);
+    ib = bp = date;
+    iblen = strlen(ib);
+    ob = bp = obuffer;
+    oblen = BUFSIZE * 6 - 1;
+
+    if (g_iconv(cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1) {
+      fprintf(stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
+      /* Return the unconverted string. */
+      g_string_free(inbuf, FALSE);
+      g_iconv_close(cvh);
+      return date;
+    }
+
+    obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
+    g_string_append(inbuf, bp);
+
+    date_utf8 = inbuf->str;
+    g_string_free(inbuf, FALSE);
+    g_iconv_close(cvh);
+  }
+
+  return date_utf8;
+}
+
 int
 draw_page_header_line_to_page(cairo_t         *cr,
                               gboolean         is_footer,
@@ -1327,21 +1400,15 @@ draw_page_header_line_to_page(cairo_t         *cr,
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   gchar *header, date[256];
-  time_t t;
-  struct tm tm;
   int height;
   gdouble line_pos;
 
   /* Reset gravity?? */
-
-  t = time(NULL);
-  tm = *localtime(&t);
-  strftime(date, 255, "%c", &tm);
   header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">Page %d</span>",
                            page_layout->header_font_desc,
-                           date,
+                           get_date(date, 255),
                            page_layout->header_font_desc,
                            page_layout->title,
                            page_layout->header_font_desc,

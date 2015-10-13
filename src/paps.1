@@ -2,7 +2,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH PAPS 1 "April  17, 2006"
+.TH PAPS 1 "October 12, 2015"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -16,40 +16,239 @@
 .\" .sp <n>    insert n+1 empty lines
 .\" for manpage-specific macros, see man(7)
 .SH NAME
-paps \- UTF-8 to PostScript converter using Pango
+paps \- text to PostScript converter using Pango
+
 .SH SYNOPSIS
 .B paps
 .RI [ options ] " files" ...
+
 .SH DESCRIPTION
 .B paps
-reads a UTF-8 encoded file and generates a PostScript language rendering of the file. The rendering is done by creating outline curves through the pango ft2 backend.
+reads an input file and writes a PostScript language or user specified
+format rendering of the file to standard output. paps accepts international
+text in any locale and provides internationalized text layout including text
+shaping and bidirectional text rendering.
+.P
+If no filename argument is provided, paps reads the standard input. If the
+standard input is a terminal, input is terminated by an EOF signal, usually
+Control-d.
+
 .SH OPTIONS
-These programs follow the usual GNU command line syntax, with long
-options starting with two dashes (`-').
-A summary of options is included below.
+.B paps
+follows the usual GNU command line syntax, with long options
+starting with two dashes (`-'). A summary of options is included below.
+.TP
+.B \-h, \-\-help
+Show summary of options.
 .TP
 .B \-\-landscape
 Landscape output. Default is portrait.
 .TP
 .B \-\-columns=cl
-Number of columns output. Default is 1.
+Format output into \fIcl\fR columns. Default is 1.
 .TP
 .B \-\-font=desc
-Set the font description. Default is Monospace 12.
+Use font based on description \fIdesc\fR. Default is \fB"Monospace 12"\fR.
+The format of the string representation is:
+.IP
+"[family-list] [style-options] [size]"
+.IP
+where \fIfamily-list\fR is a comma separated list of families optionally
+terminated by a comma, \fIstyle-options\fR is a whitespace separated list of
+words where each \fIword\fR describes one of style, variant, weight, or
+stretch, and \fIsize\fR is a decimal number for size in points, e.g. "Courier,Monospace Bold Italic 10".
+.TP
+.B \-o, \-\-output=file
+Output file. Default is \fBstdout\fR. Output format is set based on
+\fIfile\fR's extension when \-\-format is not provided.
 .TP
 .B \-\-rtl
-Do rtl layout.
+Do right-to-left text layout and align text to the right. Text direction is
+detected automatically. Use this option for explicit RTL layout and right
+alignment.
 .TP
-.B \-\-paper ps
-Choose paper size. Known paper sizes are legal, letter, a4. Default is A4.
+.B \-\-justify
+Justify the layout. Stretch complete lines to fill the entire width.
 .TP
-.B  \-\-gravity=GRAVITY
-Base gravity: glyph rotation. Known gravities are south, west, north, east, auto. Default: auto
+.B \-\-wrap=wm
+Use line wrapping mode \fIwm\fR. Default is \fBword\-char\fR.
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBword\fR
+.ad
+.RS 18n
+.rt
+Wrap lines at word boundaries
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBchar\fR
+.ad
+.RS 18n
+.rt
+Wrap lines at character boundaries
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBword-char\fR
+.ad
+.RS 18n
+.rt
+Wrap lines at word boundaries, but fall back to character boundaries if there
+is not enough space for a full word
+.RE
 .TP
-.B   \-\-gravity-hint=GRAVITY HINT.
-Gravity hint. Known gravity hints are: neutral, strong, line. Default is neutral.
-.B \-\-format format
-Choose output format. Known formats are pdf, svg, ps. (Default ps)
+.B \-\-show\-wrap
+Mark wrapped lines with special characters.
+.TP
+.B \-\-paper=ps
+Choose paper size. Accepted paper sizes are 'legal', 'letter', 'a3' and 'a4'.
+Default is \fBA4\fR.
+.TP
+.B \-\-gravity=gr
+Set base glyph orientation. Default is \fBauto\fR.
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBsouth\fR
+.ad
+.RS 18n
+.rt
+Glyphs stand upright
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBeast\fR
+.ad
+.RS 18n
+.rt
+Glyphs are rotated 90 degrees clockwise
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBnorth\fR
+.ad
+.RS 18n
+.rt
+Glyphs are upside-down
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBwest\fR
+.ad
+.RS 18n
+.rt
+Glyphs are rotated 90 degrees counter-clockwise
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBauto\fR
+.ad
+.RS 18n
+.rt
+Gravity is resolved from the context
+.RE
+
+.TP
+.B \-\-gravity-hint=gh
+Set how horizontal scripts behave in a vertical context. Default is
+\fBnatural\fR.
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBnatural\fR
+.ad
+.RS 18n
+.rt
+Scripts will take their natural gravity based on the base gravity
+and the script
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBstrong\fR
+.ad
+.RS 18n
+.rt
+Always use the base gravity, regardless of the script
+.RE
+.IP
+.sp
+.ne 3
+.mk
+.na
+\fBline\fR
+.ad
+.RS 18n
+.rt
+For scripts not in their natural direction (e.g. Latin in East gravity), choose
+per-script gravity such that every script respects the line progression. This
+means, Latin and Arabic will take opposite gravities and both flow
+top-to-bottom for example.
+.RE
+.TP
+.B \-\-format=fmt
+Choose output format. Default is \fBps\fR.
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBps\fR
+.ad
+.RS 18n
+.rt
+PostScript
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBpdf\fR
+.ad
+.RS 18n
+.rt
+Portable Document Format
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBsvg\fR
+.ad
+.RS 18n
+.rt
+Scalable Vector Graphics
+.RE
 .TP
 .B \-\-bottom-margin=bm
 Set bottom margin in postscript points (1/72 inch). Default is 36.
@@ -63,30 +262,171 @@ Set left margin. Default is 36.
 .B \-\-right-margin=rm
 Set right margin. Default is 36.
 .TP
-.B \-\-help
-Show summary of options.
-.TP
 .B \-\-header
-Draw page header for each page.
+Draw page header with document name, date and page number for each page. Header
+is not printed by default.
 .TP
 .B \-\-title
 Title string for page header (instead of filename/"stdin").
 .TP
 .B \-\-markup
-Interpret the text as pango markup.
+Interpret input as pango markup. Pango Text Attribute Markup Language allows
+marking parts of the text with tags defining additional attributes such as font
+face, size, weight, colors or text decoration such as underline or
+strikethrough.
 .TP
-.B \-\-encoding=ENCODING
-Assume the documentation encoding is ENCODING.
+.B \-\-encoding=enc
+Assume encoding of the input text is \fIenc\fR. By default the encoding of the
+current locale is used (e.g. UTF-8).
 .TP
 .B \-\-lpi
-Set the lines per inch. This determines the line spacing.
+Set number of lines per inch. This determines the line spacing.
 .TP
 .B \-\-cpi
-Set the characters per inch. This is an alternative method of specifying the font size.
+Set number of characters per inch. This is an alternative method of specifying
+the font size.
 .TP
-.B \-\-stretch-chars
-Indicates that characters should be stretched in the y-direction to fill up their vertical space. This is similar to the texttops behaviour.
+.B \-\-stretch\-chars
+Indicates that characters should be stretched in the y-direction to fill up
+their vertical space specified by the --lpi option. This is similar to the
+texttops behaviour.
 .br
+
+.SH EXIT STATUS
+.sp
+.LP
+The following exit values are returned:
+.sp
+.ne 2
+.mk
+.na
+\fB0\fR
+.ad
+.RS 6n
+.rt
+Successful completion.
+.RE
+.sp
+.ne 2
+.mk
+.na
+\fB1\fR
+.ad
+.RS 6n
+.rt
+An error occurred.
+.RE
+
+.SH EXAMPLES
+.LP
+\fBExample 1\fR Printing UTF-8 text file
+.P
+The following command can be used to print a file in any of the UTF-8 based
+locales if the file is in UTF-8 or compatible codeset.
+.sp
+.in +2
+.nf
+$ \fBpaps en_US_UTF-8.txt\fR
+.fi
+.in -2
+.sp
+.LP
+By default paps will print PostScript rendering to standard output. Send the
+output to a printer using \fBlp\fR
+.sp
+.in +2
+.nf
+$ \fBpaps en_US_UTF-8.txt | lp\fR
+.fi
+.in -2
+.sp
+.LP
+.sp
+or to a file using redirection or the \fB-o\fR option
+.sp
+.in +2
+.nf
+$ \fBpaps en_US_UTF-8.txt > out.ps\fR
+$ \fBpaps -o out.ps en_US_UTF-8.txt\fR
+.fi
+.in -2
+.sp
+.LP
+.sp
+
+
+.LP
+\fBExample 2\fR Specify encoding
+.P
+To print a file in specific encoding regardless of the current locale setting
+use the \-\-encoding option. An example for Japanese EUC encoded input file:
+.sp
+.in +2
+.nf
+$ \fBpaps --encoding eucjp ja_JP_eucjp.txt > out.ps\fR
+.fi
+.in -2
+.sp
+.LP
+paps will still use current locale setting to prioritize the available fonts
+for current language.
+
+.LP
+\fBExample 3\fR Specify locale
+.P
+Override the \fBLC_ALL\fR environment variable to run paps in a different
+locale.
+.sp
+.in +2
+.nf
+$ \fBLC_ALL=ja_JP.eucjp paps ja_JP_eucjp.txt > out.ps\fR
+.fi
+.in -2
+.sp
+.sp
+.LP
+Here paps will assume the input is in Japanese EUC encoding and will use
+Japanese eucjp locale to render the output. If \-\-header is added, the date is
+printed in Japanese.
+
+
+
+.SH ENVIRONMENT VARIABLES
+.B paps
+uses locale environment variables to determine its behavior. The following
+categories are used:
+.sp
+.ne 2
+.mk
+.na
+\fBLC_CTYPE\fR
+.ad
+.RS 16n
+.rt
+to assume the encoding of the input. This can be overriden by \-\-encoding.
+.RE
+
+.sp
+.ne 2
+.mk
+.na
+\fBLC_TIME\fR
+.ad
+.RS 16n
+.rt
+to format the date for header.
+.RE
+
+Font selection is also affected by current locale. Example 3 describes how to
+run paps in a different locale.
+
+.SH SEE ALSO
+.sp
+.LP
+\fBfc\-match\fR(1), \fBsetlocale\fR(3C)
+.sp
+.LP
+
 .SH AUTHOR
 paps was written by Dov Grobgeld <dov.grobgeld@gmail.com>.
 .PP
