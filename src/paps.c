@@ -952,13 +952,16 @@ split_text_into_paragraphs (cairo_t *cr,
               fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
               wc = 0;
             }
-          if (!*p || !wc || wc == '\n' || wc == '\f')
+          if (!*p || !wc || wc == '\r' || wc == '\n' || wc == '\f')
             {
               Paragraph *para = g_new (Paragraph, 1);
               para->wrapped = FALSE;
               para->clipped = FALSE;
               para->text = last_para;
               para->length = p - last_para;
+              /* handle dos line breaks */
+              if (wc == '\r' && *next == '\n')
+                  next = g_utf8_next_char(next);
               para->layout = pango_layout_new (pango_context);
               if (page_layout->cpi > 0.0L)
                 {
