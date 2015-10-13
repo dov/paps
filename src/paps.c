@@ -838,6 +838,7 @@ read_file (FILE   *file,
   char *text;
   char buffer[BUFSIZE];
   GIConv cvh = NULL;
+  gsize inc_seq_bytes = 0;
 
 
   if (encoding != NULL)
@@ -853,8 +854,12 @@ read_file (FILE   *file,
   inbuf = g_string_new (NULL);
   while (1)
     {
-      char *ib, *ob, obuffer[BUFSIZE * 6], *bp = fgets (buffer, BUFSIZE-1, file);
-      gsize iblen, oblen;
+      char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
+      gsize iblen, ibleft, oblen;
+
+      bp = fgets (buffer+inc_seq_bytes, BUFSIZE-inc_seq_bytes-1, file);
+      if (inc_seq_bytes)
+        inc_seq_bytes = 0;
 
       if (ferror (file))
         {
@@ -867,15 +872,28 @@ read_file (FILE   *file,
 
       if (cvh != NULL)
         {
-          ib = bp;
+          ib = buffer;
           iblen = strlen (ib);
           ob = bp = obuffer;
           oblen = BUFSIZE * 6 - 1;
           if (g_iconv (cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1)
             {
-              fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
-              exit(1);
-            }
+              /*
+               * EINVAL - incomplete sequence at the end of the buffer. Move the
+               * incomplete sequence bytes to the beginning of the buffer for
+               * the next round of conversion.
+               */
+              if (errno == EINVAL)
+                {
+                  inc_seq_bytes = iblen;
+                  memmove (buffer, ib, inc_seq_bytes);
+                }
+              else
+                {
+                  fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
+                  exit(1);
+                }
+             }
           obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
         }
       g_string_append (inbuf, bp);
