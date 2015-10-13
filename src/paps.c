@@ -295,76 +295,30 @@ parse_wrap (const char *name,
             gpointer    data,
             GError    **error)
 {
-  gboolean ret;
-  if ((ret = parse_enum (PANGO_TYPE_WRAP_MODE, (int*)(void*)&opt_wrap,
-                         name, arg, data, error)))
-    {
-      opt_wrap_set = TRUE;
-    }
-  return ret;
+  return (parse_enum (PANGO_TYPE_WRAP_MODE, (int*)(void*)&opt_wrap,
+                      name, arg, data, error));
 }
 
 static gboolean
-_paps_arg_gravity_cb(const char *option_name,
-                     const char *value,
-                     gpointer    data)
+parse_gravity_hint (const char *name,
+                    const char *arg,
+                    gpointer    data,
+                    GError    **error)
 {
-  gboolean retval = TRUE;
-  
-  if (value && *value)
-    {
-      if (g_ascii_strcasecmp(value, "south") == 0)
-        gravity = PANGO_GRAVITY_SOUTH;
-      else if (g_ascii_strcasecmp(value, "east") == 0)
-        gravity = PANGO_GRAVITY_EAST;
-      else if (g_ascii_strcasecmp(value, "north") == 0)
-        gravity = PANGO_GRAVITY_NORTH;
-      else if (g_ascii_strcasecmp(value, "west") == 0)
-        gravity = PANGO_GRAVITY_WEST;
-      else if (g_ascii_strcasecmp(value, "auto") == 0)
-        gravity = PANGO_GRAVITY_AUTO;
-      else {
-        retval = FALSE;
-        fprintf(stderr, "Unknown gravity name: %s.\n", value);
-      }
-    }
-  else
-    {
-      fprintf(stderr, "You must specify gravity.\n");
-      retval = FALSE;
-    }
-  
-  return retval;
+  return (parse_enum (PANGO_TYPE_GRAVITY_HINT, (int*)(void*)&gravity_hint,
+                      name, arg, data, error));
 }
 
 static gboolean
-_paps_arg_gravity_hint_cb(const char *option_name,
-                          const char *value,
-                          gpointer    data)
+parse_gravity (const char *name,
+               const char *arg,
+               gpointer    data,
+               GError    **error)
 {
-  gboolean retval = TRUE;
-  
-  if (value && *value)
-    {
-      if (g_ascii_strcasecmp(value, "neutral") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
-      else if (g_ascii_strcasecmp(value, "strong") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_STRONG;
-      else if (g_ascii_strcasecmp(value, "line") == 0)
-        gravity_hint = PANGO_GRAVITY_HINT_LINE;
-      else {
-        retval = FALSE;
-        fprintf(stderr, "Unknown gravity hint name: %s.\n", value);
-      }
-    }
-  else
-    {
-      fprintf(stderr, "You must specify gravity hint.\n");
-      retval = FALSE;
-    }
-  
-  return retval;
+  return (parse_enum (PANGO_TYPE_GRAVITY, (int*)(void*)&gravity,
+                      name, arg, data, error));
 }
+
 
 static gboolean
 _paps_arg_format_cb(const char *option_name,
@@ -514,17 +468,17 @@ int main(int argc, char *argv[])
      "Do rtl layout.", NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
      "Justify the layout.", NULL},
-    {"wrap",            0, 0, G_OPTION_ARG_CALLBACK,                    &parse_wrap,
+    {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, &parse_wrap,
      "Text wrapping mode (Default is word-char)",   "word/char/word-char"},
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
      "Show characters for wrapping.", NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
      "Choose paper size. Known paper sizes are legal,\n"
      "letter, a3, a4. (Default: a4)", "PAPER"},
-    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_cb,
-     "Base gravity: glyph rotation. Defaut: auto", "GRAVITY"},
-    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_gravity_hint_cb,
-     "Gravity hint", "HINT"},
+    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity,
+     "Base gravity: glyph rotation. Known gravities are south, west, north, east, auto. Defaut: auto", "GRAVITY"},
+    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity_hint,
+     "Gravity hint. Known gravity hints are: natural, strong, line. Default is natural.", "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
      "Choose output format. Known formats are pdf, svg, ps. (Default: ps)", "FORMAT"},
     {"language", 0, 0, G_OPTION_ARG_STRING, &opt_language,
