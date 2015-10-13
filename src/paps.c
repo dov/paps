@@ -1245,8 +1245,8 @@ void start_page(cairo_surface_t *surface,
       if (output_format == FORMAT_POSTSCRIPT)
         {
           cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
-          cairo_translate(cr,page_layout->page_height, 0);
-          cairo_rotate(cr, M_PI/2);
+          cairo_translate(cr, 0, page_layout->page_width);
+          cairo_rotate(cr, 3*M_PI/2);
         }
     }
   else
