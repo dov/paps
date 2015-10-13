@@ -50,6 +50,12 @@
  */
 #define	CAIRO_COMMENT_MAX       255
 
+#define	MARGIN_LEFT     36
+#define	MARGIN_RIGHT    36
+#define	MARGIN_TOP      36
+#define	MARGIN_BOTTOM   36
+
+
 typedef enum {
     PAPER_TYPE_A4 = 0,
     PAPER_TYPE_US_LETTER = 1,
@@ -68,7 +74,7 @@ typedef struct  {
     double height;
 } paper_size_t;
 
-const paper_size_t paper_sizes[] = {
+static const paper_size_t paper_sizes[] = {
     { 595.28, 841.89}, /* A4 */
     { 612, 792},       /* US letter */
     { 612, 1008},      /* US legal */
@@ -111,11 +117,6 @@ typedef struct {
 } page_layout_t;
 
 typedef struct {
-  char *text;
-  int length;
-} para_t;
-
-typedef struct {
   PangoLayoutLine *pango_line;
   PangoRectangle logical_rect;
   PangoRectangle ink_rect;
@@ -138,7 +139,7 @@ struct _Paragraph {
 };
 
 /* Information passed in user data when drawing outlines */
-GList        *split_paragraphs_into_lines  (page_layout_t   *page_layout,
+static GList *split_paragraphs_into_lines  (page_layout_t   *page_layout,
                                             GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             gchar           *encoding);
@@ -159,8 +160,7 @@ static void   eject_column                 (cairo_t         *cr,
 static void   eject_page                   (cairo_t         *cr);
 static void   start_page                   (cairo_surface_t *surface,
                                             cairo_t         *cr, 
-                                            page_layout_t   *page_layout,
-                                            int              page_idx);
+                                            page_layout_t   *page_layout);
 static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
@@ -175,27 +175,23 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
 void          postscript_dsc_comments      (cairo_surface_t *surface,
                                             page_layout_t   *page_layout);
 
-int last_char_idx = 0;
-double last_pos_y = -1;
-double last_pos_x = -1;
 FILE *output_fh;
-paper_type_t paper_type = PAPER_TYPE_A4;
-gboolean output_format_set = FALSE;
-output_format_t output_format = FORMAT_POSTSCRIPT;
-PangoGravity gravity = PANGO_GRAVITY_AUTO;
-PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
-const char *opt_language = NULL;
-gboolean opt_wrap_set = FALSE;
-PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
-cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
-double glyph_font_size = -1;
+static paper_type_t paper_type = PAPER_TYPE_A4;
+static gboolean output_format_set = FALSE;
+static output_format_t output_format = FORMAT_POSTSCRIPT;
+static PangoGravity gravity = PANGO_GRAVITY_AUTO;
+static PangoGravityHint gravity_hint = PANGO_GRAVITY_HINT_NATURAL;
+static const char *opt_language = NULL;
+static PangoWrapMode opt_wrap = PANGO_WRAP_WORD_CHAR;
+static cairo_font_face_t *paps_glyph_face = NULL; /* Special face for paps characters, e.g. newline */
+static double glyph_font_size = -1;
 
 /* Render function for paps glyphs */
-cairo_status_t
-paps_render_glyph(cairo_scaled_font_t *scaled_font,
-                 unsigned long  glyph,
-                 cairo_t *cr,
-                 cairo_text_extents_t *extents)
+static cairo_status_t
+paps_render_glyph(cairo_scaled_font_t *scaled_font G_GNUC_UNUSED,
+                  unsigned long glyph,
+                  cairo_t *cr,
+                  cairo_text_extents_t *extents)
 {
   char ch = (unsigned char)glyph;
 
@@ -427,7 +423,7 @@ get_language(void)
   return retval;
 }
 
-static cairo_status_t paps_cairo_write_func(void *closure,
+static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
                                             const unsigned char *data,
                                             unsigned int length)
 {
@@ -443,7 +439,9 @@ int main(int argc, char *argv[])
   gboolean do_encoding_from_lang = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
   int num_columns = 1;
-  int top_margin = 36, bottom_margin = 36, right_margin = 36, left_margin = 36;
+  int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
+      right_margin = MARGIN_RIGHT, left_margin = MARGIN_LEFT;
+
   gboolean do_fatal_warnings = FALSE;
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
@@ -536,7 +534,7 @@ int main(int argc, char *argv[])
   double surface_page_width = 0, surface_page_height = 0;
 
   /* Set locale from environment */
-  setlocale(LC_ALL, "");
+  (void) setlocale(LC_ALL, "");
 
   /* Setup the paps glyph face */
   paps_glyph_face = cairo_user_font_face_create();
@@ -665,7 +663,7 @@ int main(int argc, char *argv[])
     total_gutter_width = gutter_width * (num_columns - 1);
   if (do_landscape)
     {
-      int tmp;
+      double tmp;
       tmp = page_width;
       page_width = page_height;
       page_height = tmp;
@@ -701,11 +699,11 @@ int main(int argc, char *argv[])
   else
     page_layout.header_sep = 0;
     
-  page_layout.column_height = page_height
+  page_layout.column_height = (int)page_height
                             - page_layout.top_margin
                             - page_layout.header_sep
                             - page_layout.bottom_margin;
-  page_layout.column_width =  (page_layout.page_width 
+  page_layout.column_width =  ((int)page_layout.page_width
                             - page_layout.left_margin - page_layout.right_margin
                             - total_gutter_width) / page_layout.num_columns;
   page_layout.do_separation_line = TRUE;
@@ -740,7 +738,7 @@ int main(int argc, char *argv[])
 
       font_size = pango_font_description_get_size (font_description);
       // update the font size to that width
-      pango_font_description_set_size (font_description, font_size * page_layout.scale_x);
+      pango_font_description_set_size (font_description, (int)(font_size * page_layout.scale_x));
       glyph_font_size = font_size * page_layout.scale_x / PANGO_SCALE;
       pango_context_set_font_description (pango_context, font_description);
     }
@@ -958,7 +956,7 @@ split_text_into_paragraphs (cairo_t *cr,
                     }
                   len = g_utf8_strlen (para->text, para->length);
                   /* the amount of characters that can be put on the line against CPI */
-                  col = page_layout->column_width / 72.0 * page_layout->cpi;
+                  col = (int)(page_layout->column_width / 72.0 * page_layout->cpi);
                   if (len > col)
                     {
                       /* need to wrap them up */
@@ -1168,7 +1166,7 @@ output_pages(cairo_surface_t *surface,
   int height = 0;
   LineLink *prev_line_link = NULL;
 
-  start_page(surface, cr, page_layout, page_idx);
+  start_page(surface, cr, page_layout);
 
   if (need_header)
     draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
@@ -1191,7 +1189,7 @@ output_pages(cairo_surface_t *surface,
               column_idx = 0;
               eject_page(cr);
               page_idx++;
-              start_page(surface, cr, page_layout, page_idx);
+              start_page(surface, cr, page_layout);
 
               if (need_header)
                 draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
@@ -1262,8 +1260,7 @@ void eject_page(cairo_t *cr)
 
 void start_page(cairo_surface_t *surface,
                 cairo_t *cr,
-                page_layout_t *page_layout,
-                int page_idx)
+                page_layout_t *page_layout)
 {
   cairo_identity_matrix(cr);
 
