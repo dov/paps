@@ -37,6 +37,21 @@
 #include <math.h>
 #include <wchar.h>
 
+#if ENABLE_NLS
+#include <libintl.h>
+
+#define	_(str)		gettext(str)
+#ifdef gettext_noop
+#define N_(str)		gettext_noop(str)
+#else
+#define N_(str)		(str)
+#endif
+
+#else	/* NLS is disabled */
+#define _(str)		(str)
+#define N_(str)		(str)
+#endif
+
 #define BUFSIZE 1024
 #define DEFAULT_FONT_FAMILY     "Monospace"
 #define DEFAULT_FONT_SIZE       "12"
@@ -240,12 +255,12 @@ _paps_arg_paper_cb(const char *option_name,
         paper_type = PAPER_TYPE_A3;
       else {
         retval = FALSE;
-        fprintf(stderr, "Unknown page size name: %s.\n", value);
+        fprintf(stderr, _("Unknown page size name: %s.\n"), value);
       }
     }
   else
     {
-      fprintf(stderr, "You must specify page size.\n");
+      fprintf(stderr, _("You must specify page size.\n"));
       retval = FALSE;
     }
   
@@ -274,7 +289,7 @@ parse_enum (GType       type,
       g_set_error(error,
                   G_OPTION_ERROR,
                   G_OPTION_ERROR_BAD_VALUE,
-                  "Argument for %s must be one of %s",
+                  _("Argument for %1$s must be one of %2$s"),
                   name,
                   possible_values);
     }
@@ -334,12 +349,12 @@ _paps_arg_format_cb(const char *option_name,
         output_format = FORMAT_SVG;
       else {
         retval = FALSE;
-        fprintf(stderr, "Unknown output format: %s.\n", value);
+        fprintf(stderr, _("Unknown output format: %s.\n"), value);
       }
     }
   else
     {
-      fprintf(stderr, "You must specify a output format.\n");
+      fprintf(stderr, _("You must specify a output format.\n"));
       retval = FALSE;
     }
   
@@ -361,13 +376,13 @@ _paps_arg_lpi_cb(const gchar *option_name,
       page_layout->lpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
-          fprintf(stderr, "given LPI value was invalid.\n");
+          fprintf(stderr, _("Given LPI value was invalid.\n"));
           retval = FALSE;
         }
     }
   else
     {
-      fprintf(stderr, "You must specify the amount of lines per inch.\n");
+      fprintf(stderr, _("You must specify the amount of lines per inch.\n"));
       retval = FALSE;
     }
 
@@ -389,13 +404,13 @@ _paps_arg_cpi_cb(const gchar *option_name,
       page_layout->cpi = g_strtod(value, &p);
       if ((p && *p) || errno == ERANGE)
         {
-          fprintf(stderr, "given CPI value was invalid.\n");
+          fprintf(stderr, _("Given CPI value was invalid.\n"));
           retval = FALSE;
         }
     }
   else
     {
-      fprintf(stderr, "You must specify the amount of characters per inch.\n");
+      fprintf(stderr, _("You must specify the amount of characters per inch.\n"));
       retval = FALSE;
     }
 
@@ -444,53 +459,53 @@ int main(int argc, char *argv[])
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape,
-     "Landscape output. (Default: portrait)", NULL},
+     N_("Landscape output. (Default: portrait)"), NULL},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns,
-     "Number of columns output. (Default: 1)", "NUM"},
+     N_("Number of columns output. (Default: 1)"), "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font,
-     "Set font. (Default: Monospace 12)", "DESC"},
+     N_("Set font. (Default: Monospace 12)"), "DESC"},
     {"output", 'o', 0, G_OPTION_ARG_STRING, &output,
-     "Output file. (Default: stdout)", "DESC"},
+     N_("Output file. (Default: stdout)"), "DESC"},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl,
-     "Do right-to-left text layout.", NULL},
+     N_("Do right-to-left text layout."), NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
-     "Justify the layout.", NULL},
+     N_("Justify the layout."), NULL},
     {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, &parse_wrap,
-     "Text wrapping mode [word, char, word-char]. (Default: word-char)", "WRAP"},
+     N_("Text wrapping mode [word, char, word-char]. (Default: word-char)"), "WRAP"},
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
-     "Show characters for wrapping.", NULL},
+     N_("Show characters for wrapping."), NULL},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
-     "Set paper size [legal, letter, a3, a4]. (Default: a4)", "PAPER"},
+     N_("Set paper size [legal, letter, a3, a4]. (Default: a4)"), "PAPER"},
     {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity,
-     "Base glyph rotation [south, west, north, east, auto]. (Defaut: auto)", "GRAVITY"},
+     N_("Base glyph rotation [south, west, north, east, auto]. (Defaut: auto)"), "GRAVITY"},
     {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity_hint,
-     "Base glyph orientation [natural, strong, line]. (Default: natural)", "HINT"},
+     N_("Base glyph orientation [natural, strong, line]. (Default: natural)"), "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
-     "Set output format [pdf, svg, ps]. (Default: ps)", "FORMAT"},
+     N_("Set output format [pdf, svg, ps]. (Default: ps)"), "FORMAT"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
-     "Set bottom margin in postscript point units (1/72 inch). (Default: 36)", "NUM"},
+     N_("Set bottom margin in postscript point units (1/72 inch). (Default: 36)"), "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
-     "Set top margin. (Default: 36)", "NUM"},
+     N_("Set top margin. (Default: 36)"), "NUM"},
     {"right-margin", 0, 0, G_OPTION_ARG_INT, &right_margin,
-     "Set right margin. (Default: 36)", "NUM"},
+     N_("Set right margin. (Default: 36)"), "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin,
-     "Set left margin. (Default: 36)", "NUM"},
+     N_("Set left margin. (Default: 36)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
-     "Draw page header for each page.", NULL},
+     N_("Draw page header for each page."), NULL},
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
-     "Title string for page header (Default: filename/stdin).", "TITLE"},
+     N_("Title string for page header (Default: filename/stdin)."), "TITLE"},
     {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
-     "Interpret input text as pango markup.", NULL},
+     N_("Interpret input text as pango markup."), NULL},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
-     "Assume encoding of input text. (Default: encoding of current locale)", "ENCODING"},
+     N_("Assume encoding of input text. (Default: encoding of current locale)"), "ENCODING"},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
-     "Set the amount of lines per inch.", "REAL"},
+     N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
-     "Set the amount of characters per inch.", "REAL"},
+     N_("Set the amount of characters per inch."), "REAL"},
     {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
-     "Stretch characters in y-direction to fill lines.", NULL},
+     N_("Stretch characters in y-direction to fill lines."), NULL},
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
-     "Set glib fatal warnings", "REAL"},
+     N_("Set glib fatal warnings"), "REAL"},
     
     {NULL}
 
@@ -524,6 +539,11 @@ int main(int argc, char *argv[])
   /* Set locale from environment */
   (void) setlocale(LC_ALL, "");
 
+  /* Setup i18n */
+  textdomain(GETTEXT_PACKAGE);
+  bindtextdomain(GETTEXT_PACKAGE, DATADIR "/locale");
+  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+
   /* Setup the paps glyph face */
   paps_glyph_face = cairo_user_font_face_create();
   cairo_user_font_face_set_render_glyph_func(paps_glyph_face, paps_render_glyph);
@@ -533,6 +553,7 @@ int main(int argc, char *argv[])
 
   options = g_option_group_new("main","","",&page_layout, NULL);
   g_option_group_add_entries(options, entries);
+  g_option_group_set_translation_domain(options, GETTEXT_PACKAGE);
   g_option_context_set_main_group(ctxt, options);
 #if 0
   g_option_context_add_main_entries(ctxt, entries, NULL);
@@ -541,7 +562,7 @@ int main(int argc, char *argv[])
   /* Parse command line */
   if (!g_option_context_parse(ctxt, &argc, &argv, &error))
     {
-      fprintf(stderr, "Command line error: %s\n", error->message);
+      fprintf(stderr, _("Command line error: %s\n"), error->message);
       exit(1);
     }
   
@@ -557,7 +578,7 @@ int main(int argc, char *argv[])
       IN = fopen(filename_in, "r");
       if (!IN)
         {
-          fprintf(stderr, "Failed to open %s!\n", filename_in);
+          fprintf(stderr, _("Failed to open %s!\n"), filename_in);
           exit(1);
         }
     }
@@ -575,7 +596,7 @@ int main(int argc, char *argv[])
       output_fh = fopen(output,"wb");
       if (!output_fh)
         {
-          fprintf(stderr, "Failed to open %s for writing!\n", output);
+          fprintf(stderr, _("Failed to open %s for writing!\n"), output);
           exit(1);
         }
     }
@@ -775,7 +796,7 @@ read_file (FILE   *file,
       cvh = g_iconv_open ("UTF-8", encoding);
       if (cvh == (GIConv)-1)
         {
-          fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname (), encoding);
+          fprintf(stderr, _("%s: Invalid encoding: %s\n"), g_get_prgname (), encoding);
           exit(1);
         }
     }
@@ -792,7 +813,7 @@ read_file (FILE   *file,
 
       if (ferror (file))
         {
-          fprintf(stderr, "%s: Error reading file.\n", g_get_prgname ());
+          fprintf(stderr, _("%s: Error reading file.\n"), g_get_prgname ());
           g_string_free (inbuf, TRUE);
           exit(1);
         }
@@ -819,7 +840,7 @@ read_file (FILE   *file,
                 }
               else
                 {
-                  fprintf (stderr, "%s: Error while converting strings.\n", g_get_prgname ());
+                  fprintf (stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
                   exit(1);
                 }
              }
@@ -895,7 +916,7 @@ split_text_into_paragraphs (cairo_t *cr,
           next = g_utf8_next_char (p);
           if (wc == (gunichar)-1)
             {
-              fprintf (stderr, "%s: Invalid character in input\n", g_get_prgname ());
+              fprintf (stderr, _("%s: Invalid character in input\n"), g_get_prgname ());
               wc = 0;
             }
           if (!*p || !wc || wc == '\r' || wc == '\n' || wc == '\f')
@@ -924,7 +945,7 @@ split_text_into_paragraphs (cairo_t *cr,
                   wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
                   if (wtext == NULL)
                     {
-                      fprintf (stderr, "%s: Unable to convert UTF-8 to UCS-4.\n", g_get_prgname ());
+                      fprintf (stderr, _("%s: Unable to convert UTF-8 to UCS-4.\n"), g_get_prgname ());
                     fail:
                       g_free (wtext);
                       g_free (wnewtext);
@@ -941,7 +962,7 @@ split_text_into_paragraphs (cairo_t *cr,
                       para->clipped = TRUE;
                       if (wnewtext == NULL)
                         {
-                          fprintf (stderr, "%s: Unable to allocate the memory.\n", g_get_prgname ());
+                          fprintf (stderr, _("%s: Unable to allocate the memory.\n"), g_get_prgname ());
                           goto fail;
                         }
                       for (i = 0; i < len; i++)
@@ -959,7 +980,7 @@ split_text_into_paragraphs (cairo_t *cr,
                       newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
                       if (newtext == NULL)
                         {
-                          fprintf (stderr, "%s: Unable to convert UCS-4 to UTF-8.\n", g_get_prgname ());
+                          fprintf (stderr, _("%s: Unable to convert UCS-4 to UTF-8.\n"), g_get_prgname ());
                           goto fail;
                         }
                       pango_layout_set_text (para->layout, newtext, -1);
@@ -1337,7 +1358,7 @@ get_date(char *date, int maxlen)
 
     cvh = g_iconv_open("UTF-8", get_encoding());
     if (cvh == (GIConv)-1) {
-      fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname(), get_encoding());
+      fprintf(stderr, _("%s: Invalid encoding: %s\n"), g_get_prgname(), get_encoding());
       exit(1);
     }
 
@@ -1348,7 +1369,7 @@ get_date(char *date, int maxlen)
     oblen = BUFSIZE * 6 - 1;
 
     if (g_iconv(cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1) {
-      fprintf(stderr, "%s: Error while converting strings.\n", g_get_prgname());
+      fprintf(stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
       /* Return the unconverted string. */
       g_string_free(inbuf, FALSE);
       g_iconv_close(cvh);
