@@ -172,7 +172,7 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             page_layout_t   *page_layout,
                                             PangoContext    *ctx,
                                             int              page);
-void          postscript_dsc_comments      (cairo_surface_t *surface,
+static void   postscript_dsc_comments      (cairo_surface_t *surface,
                                             page_layout_t   *page_layout);
 
 FILE *output_fh;
@@ -1319,6 +1319,54 @@ draw_line_to_page(cairo_t *cr,
     }
 }
 
+/*
+ * Provide date string from current locale converted to UTF-8.
+ */
+char *
+get_date(char *date, int maxlen)
+{
+  time_t t;
+  GIConv cvh = NULL;
+  GString *inbuf;
+  char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
+  gsize iblen, oblen;
+  static char *date_utf8 = NULL;
+
+  if (date_utf8 == NULL) {
+    t = time(NULL);
+    strftime(date, maxlen, (char *)NULL, localtime(&t));
+
+    cvh = g_iconv_open("UTF-8", get_encoding());
+    if (cvh == (GIConv)-1) {
+      fprintf(stderr, "%s: Invalid encoding: %s\n", g_get_prgname(), get_encoding());
+      exit(1);
+    }
+
+    inbuf = g_string_new(NULL);
+    ib = bp = date;
+    iblen = strlen(ib);
+    ob = bp = obuffer;
+    oblen = BUFSIZE * 6 - 1;
+
+    if (g_iconv(cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1) {
+      fprintf(stderr, "%s: Error while converting strings.\n", g_get_prgname());
+      /* Return the unconverted string. */
+      g_string_free(inbuf, FALSE);
+      g_iconv_close(cvh);
+      return date;
+    }
+
+    obuffer[BUFSIZE * 6 - 1 - oblen] = 0;
+    g_string_append(inbuf, bp);
+
+    date_utf8 = inbuf->str;
+    g_string_free(inbuf, FALSE);
+    g_iconv_close(cvh);
+  }
+
+  return date_utf8;
+}
+
 int
 draw_page_header_line_to_page(cairo_t         *cr,
                               gboolean         is_footer,
@@ -1332,21 +1380,15 @@ draw_page_header_line_to_page(cairo_t         *cr,
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   gchar *header, date[256];
-  time_t t;
-  struct tm tm;
   int height;
   gdouble line_pos;
 
   /* Reset gravity?? */
-
-  t = time(NULL);
-  tm = *localtime(&t);
-  strftime(date, 255, "%c", &tm);
   header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">Page %d</span>",
                            page_layout->header_font_desc,
-                           date,
+                           get_date(date, 255),
                            page_layout->header_font_desc,
                            page_layout->title,
                            page_layout->header_font_desc,
