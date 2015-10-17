@@ -892,8 +892,7 @@ split_text_into_paragraphs (cairo_t *cr,
       para->clipped = FALSE;
       para->text = text;
       para->length = strlen(text);
-      para->layout = pango_cairo_create_layout(cr); // pango_layout_new (pango_context);
-      //          pango_layout_set_font_description (para->layout, font_description);
+      para->layout = pango_layout_new (pango_context);
       pango_layout_set_markup (para->layout, para->text, para->length);
       pango_layout_set_justify (para->layout, page_layout->do_justify);
       pango_layout_set_alignment (para->layout,
