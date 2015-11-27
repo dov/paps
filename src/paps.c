@@ -503,8 +503,12 @@ int main(int argc, char *argv[])
      N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
      N_("Set the amount of characters per inch."), "REAL"},
+    /*
+     * not fixed for cairo backend: disable
+     *
     {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
      N_("Stretch characters in y-direction to fill lines."), NULL},
+     */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
      N_("Set glib fatal warnings"), "REAL"},
     
@@ -1086,8 +1090,12 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
       par_list = par_list->next;
     }
   
+  /*
+   * not fixed for cairo backend: disable
+   *
   if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L)
       page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * PANGO_SCALE / max_height;
+   */
 
   return g_list_reverse(line_list);
   
