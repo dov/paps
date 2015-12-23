@@ -285,11 +285,6 @@ Set number of lines per inch. This determines the line spacing.
 .B \-\-cpi
 Set number of characters per inch. This is an alternative method of specifying
 the font size.
-.TP
-.B \-\-stretch\-chars
-Indicates that characters should be stretched in the y-direction to fill up
-their vertical space specified by the --lpi option. This is similar to the
-texttops behaviour.
 .br
 
 .SH EXIT STATUS
@@ -329,7 +324,6 @@ locales if the file is in UTF-8 or compatible codeset.
 $ \fBpaps en_US_UTF-8.txt\fR
 .fi
 .in -2
-.sp
 .LP
 By default paps will print PostScript rendering to standard output. Send the
 output to a printer using \fBlp\fR
@@ -339,7 +333,6 @@ output to a printer using \fBlp\fR
 $ \fBpaps en_US_UTF-8.txt | lp\fR
 .fi
 .in -2
-.sp
 .LP
 .sp
 or to a file using redirection or the \fB-o\fR option
@@ -354,7 +347,6 @@ $ \fBpaps -o out.ps en_US_UTF-8.txt\fR
 .LP
 .sp
 
-
 .LP
 \fBExample 2\fR Specify encoding
 .P
@@ -366,7 +358,6 @@ use the \-\-encoding option. An example for Japanese EUC encoded input file:
 $ \fBpaps --encoding eucjp ja_JP_eucjp.txt > out.ps\fR
 .fi
 .in -2
-.sp
 .LP
 paps will still use current locale setting to prioritize the available fonts
 for current language.
@@ -382,14 +373,10 @@ locale.
 $ \fBLC_ALL=ja_JP.eucjp paps ja_JP_eucjp.txt > out.ps\fR
 .fi
 .in -2
-.sp
-.sp
 .LP
 Here paps will assume the input is in Japanese EUC encoding and will use
 Japanese eucjp locale to render the output. If \-\-header is added, the date is
 printed in Japanese.
-
-
 
 .SH ENVIRONMENT VARIABLES
 .B paps
@@ -405,7 +392,6 @@ categories are used:
 .rt
 to assume the encoding of the input. This can be overriden by \-\-encoding.
 .RE
-
 .sp
 .ne 2
 .mk

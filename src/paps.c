@@ -36,6 +36,7 @@
 #include <locale.h>
 #include <math.h>
 #include <wchar.h>
+#include <libgen.h>
 
 #if ENABLE_NLS
 #include <libintl.h>
@@ -502,8 +503,12 @@ int main(int argc, char *argv[])
      N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
      N_("Set the amount of characters per inch."), "REAL"},
+    /*
+     * not fixed for cairo backend: disable
+     *
     {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
      N_("Stretch characters in y-direction to fill lines."), NULL},
+     */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
      N_("Set glib fatal warnings"), "REAL"},
     
@@ -722,7 +727,7 @@ int main(int argc, char *argv[])
   if (htitle)
      page_layout.title = htitle;
   else
-     page_layout.title = filename_in;
+     page_layout.title = basename((char *)filename_in);
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
@@ -1085,8 +1090,12 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
       par_list = par_list->next;
     }
   
+  /*
+   * not fixed for cairo backend: disable
+   *
   if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L)
       page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * PANGO_SCALE / max_height;
+   */
 
   return g_list_reverse(line_list);
   
@@ -1353,7 +1362,7 @@ get_date(char *date, int maxlen)
 
   if (date_utf8 == NULL) {
     t = time(NULL);
-    strftime(date, maxlen, (char *)NULL, localtime(&t));
+    strftime(date, maxlen, "%c", localtime(&t));
 
     cvh = g_iconv_open("UTF-8", get_encoding());
     if (cvh == (GIConv)-1) {
@@ -1395,7 +1404,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
-  PangoRectangle ink_rect, logical_rect;
+  PangoRectangle ink_rect, logical_rect, pagenum_rect;
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   gchar *header, date[256];
@@ -1405,11 +1414,11 @@ draw_page_header_line_to_page(cairo_t         *cr,
   /* Reset gravity?? */
   header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">%s</span>\n"
-                           "<span font_desc=\"%s\">Page %d</span>",
-                           page_layout->header_font_desc,
-                           get_date(date, 255),
+                           "<span font_desc=\"%s\">%d</span>",
                            page_layout->header_font_desc,
                            page_layout->title,
+                           page_layout->header_font_desc,
+                           get_date(date, 255),
                            page_layout->header_font_desc,
                            page);
   pango_layout_set_markup(layout, header, -1);
@@ -1438,21 +1447,23 @@ draw_page_header_line_to_page(cairo_t         *cr,
   cairo_move_to(cr, x_pos,y_pos);
   pango_cairo_show_layout_line(cr,line);
 
-  /* output a center of header/footer */
-  line = pango_layout_get_line(layout, 1);
-  pango_layout_line_get_extents(line,
-                                &ink_rect,
-                                &logical_rect);
-  x_pos = (page_layout->page_width - (logical_rect.width / PANGO_SCALE )) / 2;
-  cairo_move_to(cr, x_pos,y_pos);
-  pango_cairo_show_layout_line(cr,line);
-
   /* output a right edge of header/footer */
   line = pango_layout_get_line(layout, 2);
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
+  pagenum_rect = logical_rect;
   x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE );
+  cairo_move_to(cr, x_pos,y_pos);
+  pango_cairo_show_layout_line(cr,line);
+
+  /* output a "center" of header/footer */
+  line = pango_layout_get_line(layout, 1);
+  pango_layout_line_get_extents(line,
+                                &ink_rect,
+                                &logical_rect);
+  x_pos = page_layout->page_width - page_layout->right_margin -
+      ((logical_rect.width + pagenum_rect.width) / PANGO_SCALE + page_layout->gutter_width);
   cairo_move_to(cr, x_pos,y_pos);
   pango_cairo_show_layout_line(cr,line);
 
