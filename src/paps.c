@@ -1404,7 +1404,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
-  PangoRectangle ink_rect, logical_rect, l3;
+  PangoRectangle ink_rect, logical_rect, pagenum_rect;
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   gchar *header, date[256];
@@ -1452,7 +1452,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  l3 = logical_rect;
+  pagenum_rect = logical_rect;
   x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE );
   cairo_move_to(cr, x_pos,y_pos);
   pango_cairo_show_layout_line(cr,line);
@@ -1463,7 +1463,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
                                 &ink_rect,
                                 &logical_rect);
   x_pos = page_layout->page_width - page_layout->right_margin -
-      ((logical_rect.width + l3.width) / PANGO_SCALE + page_layout->gutter_width);
+      ((logical_rect.width + pagenum_rect.width) / PANGO_SCALE + page_layout->gutter_width);
   cairo_move_to(cr, x_pos,y_pos);
   pango_cairo_show_layout_line(cr,line);
 
