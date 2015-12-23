@@ -1362,7 +1362,7 @@ get_date(char *date, int maxlen)
 
   if (date_utf8 == NULL) {
     t = time(NULL);
-    strftime(date, maxlen, (char *)NULL, localtime(&t));
+    strftime(date, maxlen, "%c", localtime(&t));
 
     cvh = g_iconv_open("UTF-8", get_encoding());
     if (cvh == (GIConv)-1) {
