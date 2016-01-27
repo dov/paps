@@ -266,8 +266,9 @@ Set right margin. Default is 36.
 Draw page header with document name, date and page number for each page. Header
 is not printed by default.
 .TP
-.B \-\-title
-Title string for page header (instead of filename/"stdin").
+.B \-\-title="text"
+Use \fItext\fR as the title string for page header. By default the input
+filename or "stdin" is used.
 .TP
 .B \-\-markup
 Interpret input as pango markup. Pango Text Attribute Markup Language allows
@@ -279,12 +280,15 @@ strikethrough.
 Assume encoding of the input text is \fIenc\fR. By default the encoding of the
 current locale is used (e.g. UTF-8).
 .TP
-.B \-\-lpi
+.B \-\-lpi=lines
 Set number of lines per inch. This determines the line spacing.
 .TP
-.B \-\-cpi
+.B \-\-cpi=chars
 Set number of characters per inch. This is an alternative method of specifying
 the font size.
+.TP
+.B \-\-g-fatal-warnings
+Make all glib warnings fatal.
 .br
 
 .SH EXIT STATUS
@@ -390,7 +394,7 @@ categories are used:
 .ad
 .RS 16n
 .rt
-to assume the encoding of the input. This can be overriden by \-\-encoding.
+to assume the encoding of the input. This can be overridden by \-\-encoding.
 .RE
 .sp
 .ne 2

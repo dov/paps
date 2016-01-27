@@ -510,8 +510,8 @@ int main(int argc, char *argv[])
      N_("Stretch characters in y-direction to fill lines."), NULL},
      */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
-     N_("Set glib fatal warnings"), "REAL"},
-    
+     N_("Make all glib warnings fatal."), "REAL"},
+
     {NULL}
 
   };
