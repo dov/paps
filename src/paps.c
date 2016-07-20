@@ -510,8 +510,8 @@ int main(int argc, char *argv[])
      N_("Stretch characters in y-direction to fill lines."), NULL},
      */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
-     N_("Set glib fatal warnings"), "REAL"},
-    
+     N_("Make all glib warnings fatal."), "REAL"},
+
     {NULL}
 
   };
@@ -845,7 +845,8 @@ read_file (FILE   *file,
                 }
               else
                 {
-                  fprintf (stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
+                  fprintf (stderr, _("%1$s: Error while converting input from '%2$s' to UTF-8.\n"),
+                    g_get_prgname(), encoding);
                   exit(1);
                 }
              }
@@ -1377,7 +1378,8 @@ get_date(char *date, int maxlen)
     oblen = BUFSIZE * 6 - 1;
 
     if (g_iconv(cvh, &ib, &iblen, &ob, &oblen) == (gsize)-1) {
-      fprintf(stderr, _("%s: Error while converting strings.\n"), g_get_prgname());
+      fprintf(stderr, _("%1$s: Error while converting date string from '%2$s' to UTF-8.\n"),
+        g_get_prgname(), get_encoding());
       /* Return the unconverted string. */
       g_string_free(inbuf, FALSE);
       g_iconv_close(cvh);
