@@ -667,6 +667,11 @@ int main(int argc, char *argv[])
   glyph_font_size = pango_font_description_get_size(font_description) / PANGO_SCALE;
   pango_context_set_font_description (pango_context, font_description);
 
+  if (num_columns <= 0) {
+    fprintf(stderr, _("%s: Invalid input: --columns=%d, using default.\n"), g_get_prgname (), num_columns);
+    num_columns = 1;
+  }
+
   if (num_columns == 1)
     total_gutter_width = 0;
   else
