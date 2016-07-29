@@ -443,7 +443,7 @@ static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
 
 int main(int argc, char *argv[])
 {
-  gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE;
+  gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE, do_draw_footer=FALSE;
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
@@ -493,6 +493,8 @@ int main(int argc, char *argv[])
      N_("Set left margin. (Default: 36)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
      N_("Draw page header for each page."), NULL},
+    {"footer", 0, 0, G_OPTION_ARG_NONE, &do_draw_footer,
+     "Draw page footer for each page.", NULL},
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
      N_("Title string for page header (Default: filename/stdin)."), "TITLE"},
     {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
@@ -710,9 +712,9 @@ int main(int argc, char *argv[])
   page_layout.scale_x = 1.0L;
   page_layout.scale_y = 1.0L;
   if (do_draw_header)
-    page_layout.header_sep =  header_sep;
+      page_layout.header_sep =  0; // header_sep;
   else
-    page_layout.header_sep = 0;
+      page_layout.header_sep = 0;
     
   page_layout.column_height = (int)page_height
                             - page_layout.top_margin
@@ -863,7 +865,7 @@ read_file (FILE   *file,
   fclose (file);
 
   /* Add a trailing new line if it is missing */
-  if (inbuf->str[inbuf->len-1] != '\n')
+  if (inbuf->len && inbuf->str[inbuf->len-1] != '\n')
     g_string_append(inbuf, "\n");
 
   text = inbuf->str;
@@ -1181,7 +1183,7 @@ output_pages(cairo_surface_t *surface,
   start_page(surface, cr, page_layout);
 
   if (need_header)
-    draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
+    draw_page_header_line_to_page(cr, TRUE, page_layout, pango_context, page_idx);
 
   while(pango_lines)
     {
@@ -1204,7 +1206,7 @@ output_pages(cairo_surface_t *surface,
               start_page(surface, cr, page_layout);
 
               if (need_header)
-                draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx);
+                draw_page_header_line_to_page(cr, TRUE, page_layout, pango_context, page_idx);
             }
           else
             {
@@ -1419,6 +1421,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
   gdouble line_pos;
 
   /* Reset gravity?? */
+#if 0
   header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">%s</span>\n"
                            "<span font_desc=\"%s\">%d</span>",
@@ -1428,6 +1431,11 @@ draw_page_header_line_to_page(cairo_t         *cr,
                            get_date(date, 255),
                            page_layout->header_font_desc,
                            page);
+#endif
+  header = g_strdup_printf("<span font_desc=\"%s\">%d</span>\n",
+                           page_layout->header_font_desc,
+                           page);
+
   pango_layout_set_markup(layout, header, -1);
   g_free(header);
 
@@ -1436,13 +1444,13 @@ draw_page_header_line_to_page(cairo_t         *cr,
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  x_pos = page_layout->left_margin;
+  x_pos = page_layout->left_margin + (page_layout->page_width-page_layout->left_margin-page_layout->right_margin)*0.5 - 0.5*logical_rect.width/PANGO_SCALE;
   height = logical_rect.height / PANGO_SCALE /3.0;
 
   /* The header is placed right after the margin */
   if (is_footer)
     {
-      y_pos = page_layout->page_height - page_layout->bottom_margin;
+      y_pos = page_layout->page_height - page_layout->bottom_margin*0.5;
       page_layout->footer_height = height;
     }
   else
@@ -1477,11 +1485,13 @@ draw_page_header_line_to_page(cairo_t         *cr,
   g_object_unref(layout);
 
   /* header separator */
+#if 0
   line_pos = page_layout->top_margin + page_layout->header_height + page_layout->header_sep / 2;
   cairo_move_to(cr, page_layout->left_margin, line_pos);
   cairo_line_to(cr,page_layout->page_width - page_layout->right_margin, line_pos);
   cairo_set_line_width(cr,0.1); // TBD
   cairo_stroke(cr);
+#endif
 
   return logical_rect.height;
 }
