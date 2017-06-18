@@ -685,16 +685,16 @@ int main(int argc, char *argv[])
       page_width = page_height;
       page_height = tmp;
       if (do_tumble < 0)
-        do_tumble = TRUE;
+        do_tumble = FALSE;
       if (do_duplex < 0)
-        do_duplex = TRUE;
+        do_duplex = FALSE;
     }
   else
     {
       if (do_tumble < 0)
-        do_tumble = TRUE;
+        do_tumble = FALSE;
       if (do_duplex < 0)
-        do_duplex = TRUE;
+        do_duplex = FALSE;
     }
   
   page_layout.page_width = page_width;
