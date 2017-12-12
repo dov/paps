@@ -644,7 +644,7 @@ int main(int argc, char *argv[])
   cairo_user_font_face_set_render_glyph_func(paps_glyph_face, paps_render_glyph);
 
   /* Init page_layout_t parameters set by the option parsing */
-  page_layout.cpi = page_layout.lpi = 0;
+  page_layout.cpi = page_layout.lpi = 0.0L;
 
   options = g_option_group_new("main","","",&page_layout, NULL);
   g_option_group_add_entries(options, entries);
@@ -838,7 +838,7 @@ int main(int argc, char *argv[])
       w = pango_font_metrics_get_approximate_digit_width (metrics);
       if (w > max_width)
           max_width = w;
-      page_layout.scale_x = 1 / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
+      page_layout.scale_x = 1.0L / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
 
