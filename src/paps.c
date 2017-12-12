@@ -115,6 +115,7 @@ typedef struct {
   int header_sep;
   int header_height;
   int footer_height;
+  paper_type_t paper_type;
   gdouble scale_x;
   gdouble scale_y;
   gboolean do_draw_header;
@@ -788,6 +789,7 @@ int main(int argc, char *argv[])
   
   page_layout.page_width = page_width;
   page_layout.page_height = page_height;
+  page_layout.paper_type = paper_type;
   page_layout.num_columns = num_columns;
   page_layout.left_margin = left_margin;
   page_layout.right_margin = right_margin;
@@ -1258,6 +1260,17 @@ postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
       else
         cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
     }
+  else
+    cairo_ps_surface_dsc_begin_setup(surface);
+
+  if (pl->paper_type == PAPER_TYPE_US_LEGAL)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Legal");
+  if (pl->paper_type == PAPER_TYPE_US_LETTER)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Letter");
+  if (pl->paper_type == PAPER_TYPE_A4)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A4");
+  if (pl->paper_type == PAPER_TYPE_A3)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A3");
 }
 
 
@@ -1382,7 +1395,25 @@ void start_page(cairo_surface_t *surface,
   cairo_identity_matrix(cr);
 
   if (output_format == FORMAT_POSTSCRIPT)
-    cairo_ps_surface_dsc_begin_page_setup (surface);
+    {
+      char buf[CAIRO_COMMENT_MAX];
+      int x, y;
+
+      if (page_layout->do_landscape)
+	{
+	  x = (int)page_layout->page_height;
+	  y = (int)page_layout->page_width;
+	}
+      else
+	{
+	  x = (int)page_layout->page_width;
+	  y = (int)page_layout->page_height;
+	}
+      cairo_ps_surface_dsc_begin_page_setup (surface);
+
+      snprintf(buf, CAIRO_COMMENT_MAX, "%%%%PageBoundingBox: 0 0 %d %d", x, y);
+      cairo_ps_surface_dsc_comment (surface, buf);
+    }
 
   if (page_layout->do_landscape)
     {
