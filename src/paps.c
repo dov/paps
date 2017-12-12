@@ -536,7 +536,7 @@ int main(int argc, char *argv[])
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
       right_margin = MARGIN_RIGHT, left_margin = MARGIN_LEFT;
-
+  int gutter_width = 40;
   gboolean do_fatal_warnings = FALSE;
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
@@ -579,6 +579,8 @@ int main(int argc, char *argv[])
      N_("Set right margin. (Default: 36)"), "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin,
      N_("Set left margin. (Default: 36)"), "NUM"},
+    {"gutter-width", 0, 0, G_OPTION_ARG_INT, &gutter_width,
+     N_("Set gutter width. (Default: 40)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
      N_("Draw page header for each page."), NULL},
     {"footer", 0, 0, G_OPTION_ARG_NONE, &do_draw_footer,
@@ -615,7 +617,6 @@ int main(int argc, char *argv[])
   PangoFontMap *fontmap;
   PangoFontset *fontset;
   PangoFontMetrics *metrics;
-  int gutter_width = 40;
   int total_gutter_width;
   double page_width = paper_sizes[0].width;
   double page_height = paper_sizes[0].height;
