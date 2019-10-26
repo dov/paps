@@ -37,6 +37,7 @@
 #include <math.h>
 #include <wchar.h>
 #include <libgen.h>
+#include <config.h>
 
 #if ENABLE_NLS
 #include <libintl.h>
@@ -420,7 +421,7 @@ _paps_arg_cpi_cb(const gchar *option_name,
 
 
 /*
- * Return codeset name of the environment's locale.
+ * Return codeset name of the environment's locale. Use UTF8 by default
  */
 static char*
 get_encoding()
@@ -500,7 +501,7 @@ int main(int argc, char *argv[])
     {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
      N_("Interpret input text as pango markup."), NULL},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
-     N_("Assume encoding of input text. (Default: encoding of current locale)"), "ENCODING"},
+     N_("Assume encoding of input text. (Default: UTF-8)"), "ENCODING"},
     {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
      N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,

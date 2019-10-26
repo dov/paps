@@ -1,6 +1,9 @@
 env = Environment()
 env.ParseConfig('pkg-config --cflags --libs pangocairo pangoft2')
 env.Append(CFLAGS=['-Wall','-g'],
+           CPPDEFINES=['ENABLE_NLS',
+                       'GETTEXT_PACKAGE=\\"paps\\"',
+                       'DATADIR=\\".\\"'],
            LINKFLAGS=[#'-fsanitize=address',  # Use for fsanitize
                       ]
            )
