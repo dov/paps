@@ -121,6 +121,7 @@ typedef struct {
   gboolean do_tumble;
   gboolean do_landscape;
   gboolean do_justify;
+  gboolean do_show_hyphens;
   gboolean do_separation_line;
   gboolean do_draw_contour;
   gboolean do_show_wrap;
@@ -526,7 +527,7 @@ static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
 
 int main(int argc, char *argv[])
 {
-  gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_draw_header = FALSE, do_draw_footer=FALSE;
+  gboolean do_landscape = FALSE, do_rtl = FALSE, do_justify = FALSE, do_show_hyphens=FALSE, do_draw_header = FALSE, do_draw_footer=FALSE;
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
@@ -554,6 +555,8 @@ int main(int argc, char *argv[])
      N_("Do right-to-left text layout."), NULL},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
      N_("Justify the layout."), NULL},
+    {"hyphens", 0, 0, G_OPTION_ARG_NONE, &do_show_hyphens,
+     N_("Show hyphens when wrapping."), NULL},
     {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, &parse_wrap,
      N_("Text wrapping mode [word, char, word-char]. (Default: word-char)"), "WRAP"},
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
@@ -809,6 +812,7 @@ int main(int argc, char *argv[])
   page_layout.do_separation_line = TRUE;
   page_layout.do_landscape = do_landscape;
   page_layout.do_justify = do_justify;
+  page_layout.do_show_hyphens = do_show_hyphens;
   page_layout.do_stretch_chars = do_stretch_chars;
   page_layout.do_use_markup = do_use_markup;
   page_layout.do_tumble = do_tumble;
@@ -975,6 +979,8 @@ split_text_into_paragraphs (cairo_t *cr,
   gunichar wc;
   GList *result = NULL;
   const char *last_para = text;
+  PangoAttrList *attrs = pango_attr_list_new ();
+  pango_attr_list_insert(attrs, pango_attr_insert_hyphens_new(page_layout->do_show_hyphens));
 
   /* If we are using markup we treat the entire text as a single paragraph.
    * I tested it and found that this is much slower than the split and
@@ -989,6 +995,7 @@ split_text_into_paragraphs (cairo_t *cr,
       para->text = text;
       para->length = strlen(text);
       para->layout = pango_layout_new (pango_context);
+      pango_layout_set_attributes (para->layout, attrs);
       pango_layout_set_markup (para->layout, para->text, para->length);
       pango_layout_set_justify (para->layout, page_layout->do_justify);
       pango_layout_set_alignment (para->layout,
@@ -1016,9 +1023,6 @@ split_text_into_paragraphs (cairo_t *cr,
           if (!*p || !wc || wc == '\r' || wc == '\n' || wc == '\f')
             {
               Paragraph *para = g_new (Paragraph, 1);
-              PangoAttrList *attrs = pango_attr_list_new ();
-              pango_attr_list_insert(attrs,
-                                     pango_attr_insert_hyphens_new(FALSE));
               para->wrapped = FALSE;
               para->clipped = FALSE;
               para->text = last_para;
