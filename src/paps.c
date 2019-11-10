@@ -270,6 +270,86 @@ _paps_arg_paper_cb(const char *option_name,
 }
 
 static gboolean
+parse_int (const char *word,
+	   int        *out)
+{
+  char *end;
+  long val;
+  int i;
+
+  if (word == NULL)
+    return FALSE;
+
+  val = strtol (word, &end, 10);
+  i = val;
+
+  if (end != word && *end == '\0' && val >= 0 && val == i)
+    {
+      if (out)
+        *out = i;
+
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
+// A local copy of the deprecated pango_parse_enum.
+gboolean
+copy_pango_parse_enum (GType       type,
+		   const char *str,
+ 		   int        *value,
+		   gboolean    warn,
+		   char      **possible_values)
+{
+  GEnumClass *class = NULL;
+  gboolean ret = TRUE;
+  GEnumValue *v = NULL;
+
+  class = g_type_class_ref (type);
+
+  if (G_LIKELY (str))
+    v = g_enum_get_value_by_nick (class, str);
+
+  if (v)
+    {
+      if (G_LIKELY (value))
+	*value = v->value;
+    }
+  else if (!parse_int (str, value))
+    {
+      ret = FALSE;
+      if (G_LIKELY (warn || possible_values))
+	{
+	  int i;
+	  GString *s = g_string_new (NULL);
+
+	  for (i = 0, v = g_enum_get_value (class, i); v;
+	       i++  , v = g_enum_get_value (class, i))
+	    {
+	      if (i)
+		g_string_append_c (s, '/');
+	      g_string_append (s, v->value_nick);
+	    }
+
+	  if (warn)
+	    g_warning ("%s must be one of %s",
+		       G_ENUM_CLASS_TYPE_NAME(class),
+		       s->str);
+
+	  if (possible_values)
+	    *possible_values = s->str;
+
+	  g_string_free (s, possible_values ? FALSE : TRUE);
+	}
+    }
+
+  g_type_class_unref (class);
+
+  return ret;
+}
+
+static gboolean
 parse_enum (GType       type,
             int        *value,
             const char *name,
@@ -280,11 +360,11 @@ parse_enum (GType       type,
   char *possible_values = NULL;
   gboolean ret;
 
-  ret = pango_parse_enum (type,
-                          arg,
-                          value,
-                          FALSE,
-                          &possible_values);
+  ret = copy_pango_parse_enum (type,
+                               arg,
+                               value,
+                               FALSE,
+                               &possible_values);
 
   if (!ret && error)
     {
