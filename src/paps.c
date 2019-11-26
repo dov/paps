@@ -34,6 +34,7 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
+#include <math.h>
 #include <libgen.h>
 #include <config.h>
 
@@ -42,9 +43,8 @@
 int wcwidth(wchar_t c);
 
 #ifndef M_PI
-#define __USE_XOPEN
+#define M_PI    3.14159265358979323846
 #endif
-#include <math.h>
 
 #if ENABLE_NLS
 #include <libintl.h>
