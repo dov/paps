@@ -34,10 +34,17 @@
 #include <string.h>
 #include <time.h>
 #include <locale.h>
-#include <math.h>
-#include <wchar.h>
 #include <libgen.h>
 #include <config.h>
+
+#define _XOPEN_SOURCE /* for wcwidth */
+#include <wchar.h>
+int wcwidth(wchar_t c);
+
+#ifndef M_PI
+#define __USE_XOPEN
+#endif
+#include <math.h>
 
 #if ENABLE_NLS
 #include <libintl.h>
