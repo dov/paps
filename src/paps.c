@@ -41,11 +41,6 @@
 #include <wchar.h>
 int wcwidth(wchar_t c);
 
-#ifndef M_PI
-#define __USE_XOPEN
-#endif
-#include <math.h>
-
 #if ENABLE_NLS
 #include <libintl.h>
 
@@ -1394,7 +1389,7 @@ void start_page(cairo_surface_t *surface,
         {
           cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
           cairo_translate(cr, 0, page_layout->page_width);
-          cairo_rotate(cr, 3*G_PI/2);
+          cairo_rotate(cr, -G_PI_2);
         }
     }
   else
