@@ -115,6 +115,7 @@ typedef struct {
   int header_sep;
   int header_height;
   int footer_height;
+  paper_type_t paper_type;
   gdouble scale_x;
   gdouble scale_y;
   gboolean do_draw_header;
@@ -536,7 +537,7 @@ int main(int argc, char *argv[])
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
       right_margin = MARGIN_RIGHT, left_margin = MARGIN_LEFT;
-
+  int gutter_width = 40;
   gboolean do_fatal_warnings = FALSE;
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
   gchar *encoding = NULL;
@@ -579,6 +580,8 @@ int main(int argc, char *argv[])
      N_("Set right margin. (Default: 36)"), "NUM"},
     {"left-margin", 0, 0, G_OPTION_ARG_INT, &left_margin,
      N_("Set left margin. (Default: 36)"), "NUM"},
+    {"gutter-width", 0, 0, G_OPTION_ARG_INT, &gutter_width,
+     N_("Set gutter width. (Default: 40)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
      N_("Draw page header for each page."), NULL},
     {"footer", 0, 0, G_OPTION_ARG_NONE, &do_draw_footer,
@@ -615,7 +618,6 @@ int main(int argc, char *argv[])
   PangoFontMap *fontmap;
   PangoFontset *fontset;
   PangoFontMetrics *metrics;
-  int gutter_width = 40;
   int total_gutter_width;
   double page_width = paper_sizes[0].width;
   double page_height = paper_sizes[0].height;
@@ -644,7 +646,7 @@ int main(int argc, char *argv[])
   cairo_user_font_face_set_render_glyph_func(paps_glyph_face, paps_render_glyph);
 
   /* Init page_layout_t parameters set by the option parsing */
-  page_layout.cpi = page_layout.lpi = 0;
+  page_layout.cpi = page_layout.lpi = 0.0L;
 
   options = g_option_group_new("main","","",&page_layout, NULL);
   g_option_group_add_entries(options, entries);
@@ -787,6 +789,7 @@ int main(int argc, char *argv[])
   
   page_layout.page_width = page_width;
   page_layout.page_height = page_height;
+  page_layout.paper_type = paper_type;
   page_layout.num_columns = num_columns;
   page_layout.left_margin = left_margin;
   page_layout.right_margin = right_margin;
@@ -838,7 +841,7 @@ int main(int argc, char *argv[])
       w = pango_font_metrics_get_approximate_digit_width (metrics);
       if (w > max_width)
           max_width = w;
-      page_layout.scale_x = 1 / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
+      page_layout.scale_x = 1.0L / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
       pango_font_metrics_unref (metrics);
       g_object_unref (G_OBJECT (fontmap));
 
@@ -1257,6 +1260,17 @@ postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
       else
         cairo_ps_surface_dsc_comment(surface, "%%IncludeFeature: *Duplex DuplexNoTumble");
     }
+  else
+    cairo_ps_surface_dsc_begin_setup(surface);
+
+  if (pl->paper_type == PAPER_TYPE_US_LEGAL)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Legal");
+  if (pl->paper_type == PAPER_TYPE_US_LETTER)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Letter");
+  if (pl->paper_type == PAPER_TYPE_A4)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A4");
+  if (pl->paper_type == PAPER_TYPE_A3)
+    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A3");
 }
 
 
@@ -1381,7 +1395,25 @@ void start_page(cairo_surface_t *surface,
   cairo_identity_matrix(cr);
 
   if (output_format == FORMAT_POSTSCRIPT)
-    cairo_ps_surface_dsc_begin_page_setup (surface);
+    {
+      char buf[CAIRO_COMMENT_MAX];
+      int x, y;
+
+      if (page_layout->do_landscape)
+	{
+	  x = (int)page_layout->page_height;
+	  y = (int)page_layout->page_width;
+	}
+      else
+	{
+	  x = (int)page_layout->page_width;
+	  y = (int)page_layout->page_height;
+	}
+      cairo_ps_surface_dsc_begin_page_setup (surface);
+
+      snprintf(buf, CAIRO_COMMENT_MAX, "%%%%PageBoundingBox: 0 0 %d %d", x, y);
+      cairo_ps_surface_dsc_comment (surface, buf);
+    }
 
   if (page_layout->do_landscape)
     {
