@@ -35,3 +35,5 @@ paps = executable('paps',
                   include_directories: incs,
                   dependencies : [pango_dep, cairo_dep, glib_dep, gobject_dep],
                   install: true)
+
+install_man('paps.1')
