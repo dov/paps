@@ -1,0 +1,38 @@
+200a201,210
+> gboolean
+> copy_pango_parse_enum (GType       type,
+> 		   const char *str,
+>  		   int        *value,
+> 		   gboolean    warn,
+> 		   char      **possible_values);
+> 
+> static char* get_encoding(void);
+> char * get_date(char *date, int maxlen);
+> 
+513c523
+< get_encoding()
+---
+> get_encoding(void)
+629c639
+<   int header_sep = 20;
+---
+>   /* int header_sep = 20; */
+805,808c815
+<   if (do_draw_header)
+<       page_layout.header_sep =  0; // header_sep;
+<   else
+<       page_layout.header_sep = 0;
+---
+>   page_layout.header_sep = 0; // header_sep;
+912c919
+<       gsize iblen, ibleft, oblen;
+---
+>       gsize iblen, oblen;
+1551c1558
+<   PangoRectangle ink_rect, logical_rect, pagenum_rect;
+---
+>   PangoRectangle ink_rect, logical_rect;
+1607c1614
+<   pagenum_rect = logical_rect;
+---
+>   /* pagenum_rect = logical_rect; */
