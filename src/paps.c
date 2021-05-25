@@ -198,6 +198,16 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
 static void   postscript_dsc_comments      (cairo_surface_t *surface,
                                             page_layout_t   *page_layout);
 
+gboolean
+copy_pango_parse_enum (GType       type,
+		   const char *str,
+ 		   int        *value,
+		   gboolean    warn,
+		   char      **possible_values);
+
+static char* get_encoding(void);
+char * get_date(char *date, int maxlen);
+
 FILE *output_fh;
 static paper_type_t paper_type = PAPER_TYPE_A4;
 static gboolean output_format_set = FALSE;
@@ -510,7 +520,7 @@ _paps_arg_cpi_cb(const gchar *option_name,
  * Return codeset name of the environment's locale. Use UTF8 by default
  */
 static char*
-get_encoding()
+get_encoding(void)
 {
   static char *encoding = NULL;
 
@@ -626,7 +636,7 @@ int main(int argc, char *argv[])
   const gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
   const gchar *filename_in;
   gchar *text;
-  int header_sep = 20;
+  /* int header_sep = 20; */
   int max_width = 0, w;
   GOptionGroup *options;
   cairo_t *cr;
@@ -802,10 +812,7 @@ int main(int argc, char *argv[])
   page_layout.do_show_wrap = do_show_wrap;
   page_layout.scale_x = 1.0L;
   page_layout.scale_y = 1.0L;
-  if (do_draw_header)
-      page_layout.header_sep =  0; // header_sep;
-  else
-      page_layout.header_sep = 0;
+  page_layout.header_sep = 0; // header_sep;
     
   page_layout.column_height = (int)page_height
                             - page_layout.top_margin
@@ -909,7 +916,7 @@ read_file (FILE   *file,
   while (1)
     {
       char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
-      gsize iblen, ibleft, oblen;
+      gsize iblen, oblen;
 
       bp = fgets (buffer+inc_seq_bytes, BUFSIZE-inc_seq_bytes-1, file);
       if (inc_seq_bytes)
@@ -1548,7 +1555,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
-  PangoRectangle ink_rect, logical_rect, pagenum_rect;
+  PangoRectangle ink_rect, logical_rect;
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   gchar *header, date[256];
@@ -1604,7 +1611,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  pagenum_rect = logical_rect;
+  /* pagenum_rect = logical_rect; */
   x_pos = page_layout->left_margin + (page_layout->page_width-page_layout->left_margin-page_layout->right_margin)*0.5 - 0.5*logical_rect.width/PANGO_SCALE;
   cairo_move_to(cr, x_pos,y_pos);
   pango_cairo_show_layout_line(cr,line);
