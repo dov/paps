@@ -20,6 +20,7 @@
  *
  */
 
+#include <glib/gstdio.h>
 #include <pango/pango.h>
 #include <pango/pangoft2.h>
 #include <pango/pangocairo.h>
@@ -36,6 +37,13 @@
 #include <locale.h>
 #include <libgen.h>
 #include <config.h>
+#include <string>
+#include <fmt/core.h>
+#include "format_from_dict.h"
+#include <vector>
+
+using namespace std;
+using namespace fmt;
 
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE /* for wcwidth */
@@ -111,6 +119,7 @@ typedef struct {
   int bottom_margin;
   int left_margin;
   int right_margin;
+  int num_pages;
   double page_width;
   double page_height;
   int header_ypos;
@@ -133,10 +142,16 @@ typedef struct {
   gboolean do_use_markup;
   gboolean do_stretch_chars;
   PangoDirection pango_dir;
-  const gchar *title;
+  string title;
+  string filename_path;
+  string filename;
+  string header_left;
+  string header_center;
+  string header_right;
   const gchar *header_font_desc;
   gdouble lpi;
   gdouble cpi;
+  dict_t document_info;
 } page_layout_t;
 
 typedef struct {
@@ -166,8 +181,7 @@ static GList *split_paragraphs_into_lines  (page_layout_t   *page_layout,
                                             GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             gchar           *encoding);
-static GList *split_text_into_paragraphs   (cairo_t *cr,
-                                            PangoContext    *pango_context,
+static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
                                             page_layout_t   *page_layout,
                                             int              paint_width,
                                             const char      *text);
@@ -175,16 +189,18 @@ static int    output_pages                 (cairo_surface_t * surface,
                                             cairo_t         *cr,
                                             GList           *pango_lines,
                                             page_layout_t   *page_layout,
-                                            gboolean         need_header,
+                                            gboolean         do_draw_header,
                                             PangoContext    *pango_context);
 static void   eject_column                 (cairo_t         *cr,
                                             double          title_height,
                                             page_layout_t   *page_layout,
-                                            int              column_idx);
+                                            int              column_idx,
+                                            bool             measure_only);
 static void   eject_page                   (cairo_t         *cr);
 static void   start_page                   (cairo_surface_t *surface,
                                             cairo_t         *cr, 
-                                            page_layout_t   *page_layout);
+                                            page_layout_t   *page_layout,
+                                            bool            measure_only);
 static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
@@ -196,9 +212,14 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             page_layout_t   *page_layout,
                                             PangoContext    *ctx,
                                             int              page,
-                                            int              num_pages);
+                                            int              num_pages,
+                                            dict_t&           document_info,
+                                            bool             measure_only);
 static void   postscript_dsc_comments      (cairo_surface_t *surface,
                                             page_layout_t   *page_layout);
+
+static void build_document_info            (page_layout_t* page_layout,
+                                            dict_t& document_info);
 
 gboolean
 copy_pango_parse_enum (GType       type,
@@ -208,7 +229,8 @@ copy_pango_parse_enum (GType       type,
 		   char      **possible_values);
 
 static char* get_encoding(void);
-char * get_date(char *date, int maxlen);
+string get_date();
+string fn_basename(const string& filename);
 
 FILE *output_fh;
 static paper_type_t paper_type = PAPER_TYPE_A4;
@@ -556,6 +578,9 @@ int main(int argc, char *argv[])
   gchar *encoding = nullptr;
   gchar *output = nullptr;
   gchar *htitle = nullptr;
+  gchar *hleft = nullptr;
+  gchar *hcenter = nullptr;
+  gchar *hright = nullptr;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
@@ -603,6 +628,12 @@ int main(int argc, char *argv[])
      "Draw page footer for each page.", nullptr},
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
      N_("Title string for page header (Default: filename/stdin)."), "TITLE"},
+    {"header-left", 0, 0, G_OPTION_ARG_STRING, &hleft,
+     N_("Left side of the header. Default is localized date."), "HEADER_LEFT"},
+    {"header-center", 0, 0, G_OPTION_ARG_STRING, &hcenter,
+     N_("Center side of the header. Default is localized date."), "HEADER_CENTER"},
+    {"header-right", 0, 0, G_OPTION_ARG_STRING, &hright,
+     N_("Right side of the header. Default is localized date."), "HEADER_RIGHT"},
     {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
      N_("Interpret input text as pango markup."), nullptr},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
@@ -689,7 +720,14 @@ int main(int argc, char *argv[])
 
   if (do_rtl)
     pango_dir = PANGO_DIRECTION_RTL;
-  
+
+  if (hleft)
+    page_layout.header_left = hleft;
+  if (hcenter)
+    page_layout.header_center = hcenter;
+  if (hright)
+    page_layout.header_right = hright;
+
   if (argc > 1)
     {
       filename_in = argv[1];
@@ -841,10 +879,13 @@ int main(int argc, char *argv[])
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
+  page_layout.filename_path = filename_in;
+  page_layout.filename = fn_basename(filename_in);
+
   if (htitle)
      page_layout.title = htitle;
   else
-     page_layout.title = basename((char *)filename_in);
+     page_layout.title = fn_basename(filename_in);
   page_layout.header_font_desc = header_font_desc;
 
   /* calculate x-coordinate scale */
@@ -880,8 +921,7 @@ int main(int argc, char *argv[])
   if (output_format == FORMAT_POSTSCRIPT)
     postscript_dsc_comments(surface, &page_layout);
 
-  paragraphs = split_text_into_paragraphs(cr,
-                                          pango_context,
+  paragraphs = split_text_into_paragraphs(pango_context,
                                           &page_layout,
                                           page_layout.column_width, 
                                           text);
@@ -991,8 +1031,7 @@ read_file (FILE   *file,
 /* Take a UTF8 string and break it into paragraphs on \n characters
  */
 static GList *
-split_text_into_paragraphs (cairo_t *cr,
-                            PangoContext *pango_context,
+split_text_into_paragraphs (PangoContext *pango_context,
                             page_layout_t *page_layout,
                             int paint_width,  /* In pixels */
                             const char *text)
@@ -1238,7 +1277,7 @@ postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
   /*
    * Title
    */
-  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%Title: %s", pl->title);
+  snprintf(buf, CAIRO_COMMENT_MAX, "%%%%Title: %s", pl->title.c_str());
   cairo_ps_surface_dsc_comment (surface, buf);
 
   /*
@@ -1297,80 +1336,108 @@ output_pages(cairo_surface_t *surface,
              cairo_t       *cr,
              GList         *pango_lines,
              page_layout_t *page_layout,
-             gboolean       need_header,
+             gboolean       do_draw_header,
              PangoContext  *pango_context)
 {
   int column_idx = 0;
   int column_y_pos = 0;
-  int page_idx = 1;
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
   int height = 0;
   LineLink *prev_line_link = nullptr;
-  int num_pages = -1; // TBD Calculate this in advance!
+  int num_pages = -1; // This will be calculated in the measurement pass below
   int title_height = 0;
+  GList *pango_lines_start = pango_lines;
+  dict_t document_info;
 
-  start_page(surface, cr, page_layout);
+  // Fill in the static document info 
+  build_document_info(page_layout, document_info);
+  document_info["num_pages"] = 0;
 
-  if (need_header) {
-      title_height = draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx, num_pages);
-      column_y_pos = title_height;
-  }
-  while(pango_lines)
+  // Do twice, the first time only measure without shipping
+  for (int i=0; i<2; i++)
     {
-      LineLink *line_link = (LineLink*)pango_lines->data;
-      PangoLayoutLine *line = line_link->pango_line;
-      gboolean draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
-      
-      /* Check if we need to move to next column */
-      if ((column_y_pos + line_link->logical_rect.height
-           >= pango_column_height) ||
-          (prev_line_link && prev_line_link->formfeed))
-        {
-          column_idx++;
-          column_y_pos = title_height;
-          if (column_idx == page_layout->num_columns)
-            {
-              column_idx = 0;
-              eject_page(cr);
-              page_idx++;
-              start_page(surface, cr, page_layout);
+      int page_idx = 1;
+      bool measure_only = i==0;
+      document_info["page_idx"] = page_idx;
 
-              if (need_header) {
-                title_height = draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx, num_pages);
-                column_y_pos = title_height;
-              }
-            }
-          else
-            {
-              eject_column(cr,
-                           title_height/PANGO_SCALE,
-                           page_layout,
-                           column_idx
-                           );
-            }
+      pango_lines = pango_lines_start;
+      start_page(surface, cr, page_layout, measure_only);
+    
+      if (do_draw_header)
+        {
+          title_height = draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
+          column_y_pos = title_height;
         }
-      if (page_layout->lpi > 0.0L)
-        height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
-      else
-        height = line_link->logical_rect.height;
-      draw_line_to_page(cr,
-                        column_idx,
-                        column_y_pos+height,
-                        page_layout,
-                        line,
-                        draw_wrap_character);
-      column_y_pos += height;
-      pango_lines = pango_lines->next;
-      prev_line_link = line_link;
+      while(pango_lines)
+        {
+          LineLink *line_link = (LineLink*)pango_lines->data;
+          PangoLayoutLine *line = line_link->pango_line;
+          gboolean draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
+          
+          /* Check if we need to move to next column */
+          if ((column_y_pos + line_link->logical_rect.height
+               >= pango_column_height) ||
+              (prev_line_link && prev_line_link->formfeed))
+            {
+              column_idx++;
+              column_y_pos = title_height;
+              if (column_idx == page_layout->num_columns)
+                {
+                  column_idx = 0;
+                  if (!measure_only)
+                    eject_page(cr);
+                  page_idx++;
+                  document_info["page_idx"] = page_idx;
+                  start_page(surface, cr, page_layout, measure_only);
+    
+                  if (do_draw_header) {
+                    title_height = draw_page_header_line_to_page(cr, FALSE, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
+                    column_y_pos = title_height;
+                  }
+                }
+              else
+                {
+                  eject_column(cr,
+                               title_height/PANGO_SCALE,
+                               page_layout,
+                               column_idx,
+                               measure_only
+                               );
+                }
+            }
+          if (page_layout->lpi > 0.0L)
+            height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+          else
+            height = line_link->logical_rect.height;
+          if (!measure_only)
+            draw_line_to_page(cr,
+                              column_idx,
+                              column_y_pos+height,
+                              page_layout,
+                              line,
+                              draw_wrap_character);
+          column_y_pos += height;
+          pango_lines = pango_lines->next;
+          prev_line_link = line_link;
+        }
+      if (!measure_only)
+        eject_page(cr);
+
+      if (measure_only)
+        {
+          num_pages = page_idx;
+          document_info["num_pages"] = num_pages;
+          print("Got {} pages\n", num_pages);
+        }
     }
-  eject_page(cr);
-  return page_idx;
+  return num_pages;
 }
 
 void eject_column(cairo_t *cr,
                   double title_height,
                   page_layout_t *page_layout,
-                  int column_idx)
+                  int column_idx,
+                  bool measure_only)
 {
   double x_pos, y_top, y_bot, total_gutter;
 
@@ -1395,10 +1462,13 @@ void eject_column(cairo_t *cr,
   y_top = page_layout->top_margin + page_layout->header_height + page_layout->header_sep / 2 + title_height;
   y_bot = page_layout->page_height - page_layout->bottom_margin - page_layout->footer_height;
 
-  cairo_move_to(cr,x_pos, y_top);
-  cairo_line_to(cr,x_pos, y_bot);
-  cairo_set_line_width(cr, 0.1);
-  cairo_stroke(cr);
+  if (!measure_only)
+    {
+      cairo_move_to(cr,x_pos, y_top);
+      cairo_line_to(cr,x_pos, y_bot);
+      cairo_set_line_width(cr, 0.1);
+      cairo_stroke(cr);
+    }
 }
 
 void eject_page(cairo_t *cr)
@@ -1408,7 +1478,8 @@ void eject_page(cairo_t *cr)
 
 void start_page(cairo_surface_t *surface,
                 cairo_t *cr,
-                page_layout_t *page_layout)
+                page_layout_t *page_layout,
+                bool measure_only)
 {
   cairo_identity_matrix(cr);
 
@@ -1418,26 +1489,30 @@ void start_page(cairo_surface_t *surface,
       int x, y;
 
       if (page_layout->do_landscape)
-	{
-	  x = (int)page_layout->page_height;
-	  y = (int)page_layout->page_width;
-	}
+        {
+          x = (int)page_layout->page_height;
+          y = (int)page_layout->page_width;
+        }
       else
-	{
-	  x = (int)page_layout->page_width;
-	  y = (int)page_layout->page_height;
-	}
-      cairo_ps_surface_dsc_begin_page_setup (surface);
-
-      snprintf(buf, CAIRO_COMMENT_MAX, "%%%%PageBoundingBox: 0 0 %d %d", x, y);
-      cairo_ps_surface_dsc_comment (surface, buf);
+        {
+          x = (int)page_layout->page_width;
+          y = (int)page_layout->page_height;
+        }
+      if (!measure_only)
+        {
+          cairo_ps_surface_dsc_begin_page_setup (surface);
+    
+          snprintf(buf, CAIRO_COMMENT_MAX, "%%%%PageBoundingBox: 0 0 %d %d", x, y);
+          cairo_ps_surface_dsc_comment (surface, buf);
+        }
     }
 
   if (page_layout->do_landscape)
     {
       if (output_format == FORMAT_POSTSCRIPT)
         {
-          cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
+          if (!measure_only)
+            cairo_ps_surface_dsc_comment (surface, "%%PageOrientation: Landscape");
           cairo_translate(cr, 0, page_layout->page_width);
           cairo_rotate(cr, -G_PI_2);
         }
@@ -1510,10 +1585,10 @@ draw_line_to_page(cairo_t *cr,
 /*
  * Provide date string from current locale converted to UTF-8.
  */
-char *
-get_date(char *date, int maxlen)
+string
+get_date()
 {
-  time_t t;
+  time_t t = time(nullptr);
   GIConv cvh = nullptr;
   GString *inbuf;
   char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
@@ -1521,8 +1596,9 @@ get_date(char *date, int maxlen)
   static char *date_utf8 = nullptr;
 
   if (date_utf8 == nullptr) {
+    char date[256];
     t = time(nullptr);
-    strftime(date, maxlen, "%c", localtime(&t));
+    strftime(date, sizeof(date), "%c", localtime(&t));
 
     cvh = g_iconv_open("UTF-8", get_encoding());
     if (cvh == (GIConv)-1) {
@@ -1562,14 +1638,15 @@ draw_page_header_line_to_page(cairo_t         *cr,
                               page_layout_t   *page_layout,
                               PangoContext    *ctx,
                               int              page,
-                              int              num_pages)
+                              int              num_pages,
+                              dict_t&          document_info,
+                              bool             measure_only)
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
   PangoRectangle ink_rect, logical_rect;
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
-  gchar *header, date[256];
   int height;
   gdouble line_pos;
 
@@ -1579,19 +1656,42 @@ draw_page_header_line_to_page(cairo_t         *cr,
   //    1. Date
   //    2. Filename (title)
   //    3. Page
-  header = g_strdup_printf("<span font_desc=\"%s\">%s</span>\n"
-                           "<span font_desc=\"%s\">%s</span>\n"
-                           "<span font_desc=\"%s\">%d</span>",
-                           page_layout->header_font_desc,
-                           get_date(date, 255),
-                           page_layout->header_font_desc,
-                           page_layout->title,
-                           page_layout->header_font_desc,
-                           page
-                           );
+  string header = format("<span font_desc=\"{}\">{}</span>\n"
+                         "<span font_desc=\"{}\">{}</span>\n"
+                         "<span font_desc=\"{}\">{}</span>",
+                         page_layout->header_font_desc,
+                         get_date().c_str(),
+                         page_layout->header_font_desc,
+                         page_layout->title.c_str(),
+                         page_layout->header_font_desc,
+                         page
+                         );
+  vector<string> header_parts;
+  if (page_layout->header_left.size())
+    header_parts.push_back(page_layout->header_left);
+  else
+    header_parts.push_back(get_date());
 
-  pango_layout_set_markup(layout, header, -1);
-  g_free(header);
+  if (page_layout->header_center.size())
+    header_parts.push_back(page_layout->header_center);
+  else
+    header_parts.push_back(page_layout->filename);
+  
+  if (page_layout->header_right.size())
+    header_parts.push_back(page_layout->header_right);
+  else
+    header_parts.push_back(format("{}",page));
+
+  for (auto& v : header_parts)
+    v = format_from_dict(v, document_info);
+
+  header = "";
+  for (int i=0; i<3; i++)
+    header += format("<span font_desc=\"{}\">{}</span>\n",
+                     page_layout->header_font_desc,
+                     header_parts[i]);
+
+  pango_layout_set_markup(layout, header.c_str(), -1);
 
   /* The title is in the center */
   line = pango_layout_get_line(layout, 0);
@@ -1615,7 +1715,8 @@ draw_page_header_line_to_page(cairo_t         *cr,
     }
 
   cairo_move_to(cr, x_pos,y_pos);
-  pango_cairo_show_layout_line(cr,line);
+  if (!measure_only)
+    pango_cairo_show_layout_line(cr,line);
 
   /* output a right edge of header/footer */
   line = pango_layout_get_line(layout, 1);
@@ -1625,7 +1726,8 @@ draw_page_header_line_to_page(cairo_t         *cr,
   /* pagenum_rect = logical_rect; */
   x_pos = page_layout->left_margin + (page_layout->page_width-page_layout->left_margin-page_layout->right_margin)*0.5 - 0.5*logical_rect.width/PANGO_SCALE;
   cairo_move_to(cr, x_pos,y_pos);
-  pango_cairo_show_layout_line(cr,line);
+  if (!measure_only)
+    pango_cairo_show_layout_line(cr,line);
 
   /* output a "center" of header/footer */
   line = pango_layout_get_line(layout, 2);
@@ -1637,17 +1739,43 @@ draw_page_header_line_to_page(cairo_t         *cr,
   //  x_pos = page_layout->page_width - page_layout->right_margin -
   //      ((logical_rect.width + pagenum_rect.width) / PANGO_SCALE + page_layout->gutter_width);
   cairo_move_to(cr, x_pos,y_pos);
-  pango_cairo_show_layout_line(cr,line);
+  if(!measure_only)
+    pango_cairo_show_layout_line(cr,line);
 
   g_object_unref(layout);
 
   /* header separator */
-  line_pos = page_layout->top_margin + page_layout->header_height + page_layout->header_sep;
-  line_pos += logical_rect.height/2.0/PANGO_SCALE;
-  cairo_move_to(cr, page_layout->left_margin, line_pos);
-  cairo_line_to(cr,page_layout->page_width - page_layout->right_margin, line_pos);
-  cairo_set_line_width(cr,0.1); // TBD
-  cairo_stroke(cr);
+  if (!measure_only)
+    {
+      line_pos = page_layout->top_margin + page_layout->header_height + page_layout->header_sep;
+      line_pos += logical_rect.height/2.0/PANGO_SCALE;
+      cairo_move_to(cr, page_layout->left_margin, line_pos);
+      cairo_line_to(cr,page_layout->page_width - page_layout->right_margin, line_pos);
+      cairo_set_line_width(cr,0.1); // TBD
+      cairo_stroke(cr);
+    }
 
   return logical_rect.height;
+}
+
+// Build the document info hash table that may be used in the headers
+// and footers
+static void
+build_document_info(page_layout_t* page_layout,
+                    dict_t& document_info)
+{
+  document_info["filename"] = page_layout->filename;
+  document_info["path"] = page_layout->filename_path;
+
+  GStatBuf stat_buf;
+  g_stat(page_layout->filename_path.c_str(), &stat_buf);
+  document_info["mtime"] = (time_t)stat_buf.st_mtime;
+  document_info["now"] = time(nullptr);
+
+  page_layout->document_info["num_pages"] = page_layout->num_pages;
+}
+
+string fn_basename(const string& filename)
+{
+  return basename((char*)filename.c_str());
 }

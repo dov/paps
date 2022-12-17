@@ -3,6 +3,7 @@ pango_dep = dependency('pangoft2')
 cairo_dep = dependency('pangocairo')
 glib_dep = dependency('glib-2.0')
 gobject_dep = dependency('gobject-2.0')
+fmt_dep = dependency('fmt')
 
 paps_config = configuration_data()
 
@@ -30,10 +31,15 @@ endif
 #  install_dir: join_paths(get_option('includedir'), 'paps'))
 
 paps = executable('paps',
-                  ['paps.cc'],
+                  ['paps.cc',
+                   'format_from_dict.cc'],
                   c_args: ['-DHAVE_CONFIG_H'],
                   include_directories: incs,
-                  dependencies : [pango_dep, cairo_dep, glib_dep, gobject_dep],
+                  dependencies : [pango_dep,
+                                  cairo_dep,
+                                  glib_dep,
+                                  gobject_dep,
+                                  fmt_dep],
                   install: true)
 
 install_man('paps.1')
