@@ -1,12 +1,13 @@
 dnl Process this file with autoconf to produce a configuration script
-AC_INIT(paps, 0.7.1, dov.grobgeld@gmail.com)
+AC_INIT(paps, 0.7.9, dov.grobgeld@gmail.com)
 AC_CONFIG_AUX_DIR(config)
-AC_CONFIG_SRCDIR(src/paps.c)
+AC_CONFIG_SRCDIR(src/paps.cc)
 AC_CONFIG_HEADERS([config.h])
 
 AM_INIT_AUTOMAKE
 
 AC_PROG_CC
+AC_PROG_CXX
 AX_COMPILER_FLAGS
 WARN_CFLAGS="$WARN_CFLAGS -Wno-format-y2k"
 
@@ -28,4 +29,5 @@ AM_GLIB_GNU_GETTEXT
 datadir='${prefix}/${DATADIRNAME}'
 AC_SUBST(datadir)
 
-AC_OUTPUT(Makefile src/Makefile po/Makefile.in)
+AC_CONFIG_FILES([Makefile src/Makefile po/Makefile.in])
+AC_OUTPUT()

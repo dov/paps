@@ -1,8 +1,8 @@
 man_MANS = paps.1
 
 bin_PROGRAMS = paps
-paps_CFLAGS  = $(WARN_CFLAGS) $(PANGO_CFLAGS)
-paps_SOURCES = paps.c
+paps_CXXFLAGS  = $(WARN_CFLAGS) $(PANGO_CFLAGS)
+paps_SOURCES = paps.cc
 paps_LDADD =  $(WARN_LDFLAGS) $(PANGO_LIBS) $(lib_LIBRARIES) $(all_libraries)
 paps_DEPENDENCIES = $(lib_LIBRARIES)
 

@@ -8,6 +8,6 @@ env.Append(CFLAGS=['-Wall','-g'],
                       ]
            )
 env.Program('paps',
-            ['paps.c'],
+            ['paps.cc'],
             )
             

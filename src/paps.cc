@@ -1,7 +1,7 @@
 /* Pango
- * paps.c: A postscript printing program using pango.
+ * paps.cc: A postscript printing program using pango.
  *
- * Copyright (C) 2002, 2005 Dov Grobgeld <dov.grobgeld@gmail.com>
+ * Copyright (C) 2002, 2005, 2022 Dov Grobgeld <dov.grobgeld@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -37,9 +37,11 @@
 #include <libgen.h>
 #include <config.h>
 
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE /* for wcwidth */
+// int wcwidth(wchar_t c);
+#endif
 #include <wchar.h>
-int wcwidth(wchar_t c);
 
 #if ENABLE_NLS
 #include <libintl.h>
@@ -318,14 +320,14 @@ copy_pango_parse_enum (GType       type,
 		   gboolean    warn,
 		   char      **possible_values)
 {
-  GEnumClass *class = NULL;
+  GEnumClass *klass = nullptr;
   gboolean ret = TRUE;
-  GEnumValue *v = NULL;
+  GEnumValue *v = nullptr;
 
-  class = g_type_class_ref (type);
+  klass = (GEnumClass*)g_type_class_ref (type);
 
   if (G_LIKELY (str))
-    v = g_enum_get_value_by_nick (class, str);
+    v = g_enum_get_value_by_nick (klass, str);
 
   if (v)
     {
@@ -338,10 +340,10 @@ copy_pango_parse_enum (GType       type,
       if (G_LIKELY (warn || possible_values))
 	{
 	  int i;
-	  GString *s = g_string_new (NULL);
+	  GString *s = g_string_new (nullptr);
 
-	  for (i = 0, v = g_enum_get_value (class, i); v;
-	       i++  , v = g_enum_get_value (class, i))
+	  for (i = 0, v = g_enum_get_value (klass, i); v;
+	       i++  , v = g_enum_get_value (klass, i))
 	    {
 	      if (i)
 		g_string_append_c (s, '/');
@@ -350,7 +352,7 @@ copy_pango_parse_enum (GType       type,
 
 	  if (warn)
 	    g_warning ("%s must be one of %s",
-		       G_ENUM_CLASS_TYPE_NAME(class),
+		       G_ENUM_CLASS_TYPE_NAME(klass),
 		       s->str);
 
 	  if (possible_values)
@@ -360,7 +362,7 @@ copy_pango_parse_enum (GType       type,
 	}
     }
 
-  g_type_class_unref (class);
+  g_type_class_unref (klass);
 
   return ret;
 }
@@ -373,7 +375,7 @@ parse_enum (GType       type,
             gpointer    data G_GNUC_UNUSED,
             GError **error)
 {
-  char *possible_values = NULL;
+  char *possible_values = nullptr;
   gboolean ret;
 
   ret = copy_pango_parse_enum (type,
@@ -465,7 +467,7 @@ _paps_arg_lpi_cb(const gchar *option_name,
                  gpointer     data)
 {
   gboolean retval = TRUE;
-  gchar *p = NULL;
+  gchar *p = nullptr;
   page_layout_t *page_layout = (page_layout_t*)data;
 
   if (value && *value)
@@ -493,7 +495,7 @@ _paps_arg_cpi_cb(const gchar *option_name,
                  gpointer     data)
 {
   gboolean retval = TRUE;
-  gchar *p = NULL;
+  gchar *p = nullptr;
   page_layout_t *page_layout = (page_layout_t*)data;
   
   if (value && *value)
@@ -522,9 +524,9 @@ _paps_arg_cpi_cb(const gchar *option_name,
 static char*
 get_encoding(void)
 {
-  static char *encoding = NULL;
+  static char *encoding = nullptr;
 
-  if (encoding == NULL)
+  if (encoding == nullptr)
     encoding = nl_langinfo(CODESET);
 
   return encoding;
@@ -544,43 +546,46 @@ int main(int argc, char *argv[])
   gboolean do_stretch_chars = FALSE;
   gboolean do_use_markup = FALSE;
   gboolean do_show_wrap = FALSE; /* Whether to show wrap characters */
+  gboolean do_show_version = FALSE; // Show version and exit
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
       right_margin = MARGIN_RIGHT, left_margin = MARGIN_LEFT;
   int gutter_width = 40;
   gboolean do_fatal_warnings = FALSE;
   const gchar *font = MAKE_FONT_NAME (DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
-  gchar *encoding = NULL;
-  gchar *output = NULL;
-  gchar *htitle = NULL;
+  gchar *encoding = nullptr;
+  gchar *output = nullptr;
+  gchar *htitle = nullptr;
   page_layout_t page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape,
-     N_("Landscape output. (Default: portrait)"), NULL},
+     N_("Landscape output. (Default: portrait)"), nullptr},
     {"columns", 0, 0, G_OPTION_ARG_INT, &num_columns,
      N_("Number of columns output. (Default: 1)"), "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font,
      N_("Set font. (Default: Monospace 12)"), "DESC"},
     {"output", 'o', 0, G_OPTION_ARG_STRING, &output,
      N_("Output file. (Default: stdout)"), "DESC"},
+    {"version", 'v', 0, G_OPTION_ARG_NONE, &do_show_version,
+     N_("Current version."), nullptr},
     {"rtl", 0, 0, G_OPTION_ARG_NONE, &do_rtl,
-     N_("Do right-to-left text layout."), NULL},
+     N_("Do right-to-left text layout."), nullptr},
     {"justify", 0, 0, G_OPTION_ARG_NONE, &do_justify,
-     N_("Justify the layout."), NULL},
+     N_("Justify the layout."), nullptr},
     {"hyphens", 0, 0, G_OPTION_ARG_NONE, &do_show_hyphens,
-     N_("Show hyphens when wrapping."), NULL},
-    {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, &parse_wrap,
+     N_("Show hyphens when wrapping."), nullptr},
+    {"wrap", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&parse_wrap,
      N_("Text wrapping mode [word, char, word-char]. (Default: word-char)"), "WRAP"},
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
-     N_("Show characters for wrapping."), NULL},
-    {"paper", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_paper_cb,
+     N_("Show characters for wrapping."), nullptr},
+    {"paper", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_paper_cb,
      N_("Set paper size [legal, letter, a3, a4]. (Default: a4)"), "PAPER"},
-    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity,
+    {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&parse_gravity,
      N_("Base glyph rotation [south, west, north, east, auto]. (Defaut: auto)"), "GRAVITY"},
-    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, &parse_gravity_hint,
+    {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&parse_gravity_hint,
      N_("Base glyph orientation [natural, strong, line]. (Default: natural)"), "HINT"},
-    {"format", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_format_cb,
+    {"format", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_format_cb,
      N_("Set output format [pdf, svg, ps]. (Default: ps)"), "FORMAT"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
      N_("Set bottom margin in postscript point units (1/72 inch). (Default: 36)"), "NUM"},
@@ -593,33 +598,33 @@ int main(int argc, char *argv[])
     {"gutter-width", 0, 0, G_OPTION_ARG_INT, &gutter_width,
      N_("Set gutter width. (Default: 40)"), "NUM"},
     {"header", 0, 0, G_OPTION_ARG_NONE, &do_draw_header,
-     N_("Draw page header for each page."), NULL},
+     N_("Draw page header for each page."), nullptr},
     {"footer", 0, 0, G_OPTION_ARG_NONE, &do_draw_footer,
-     "Draw page footer for each page.", NULL},
+     "Draw page footer for each page.", nullptr},
     {"title", 0, 0, G_OPTION_ARG_STRING, &htitle,
      N_("Title string for page header (Default: filename/stdin)."), "TITLE"},
     {"markup", 0, 0, G_OPTION_ARG_NONE, &do_use_markup,
-     N_("Interpret input text as pango markup."), NULL},
+     N_("Interpret input text as pango markup."), nullptr},
     {"encoding", 0, 0, G_OPTION_ARG_STRING, &encoding,
      N_("Assume encoding of input text. (Default: UTF-8)"), "ENCODING"},
-    {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_lpi_cb,
+    {"lpi", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_lpi_cb,
      N_("Set the amount of lines per inch."), "REAL"},
-    {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, _paps_arg_cpi_cb,
+    {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_cpi_cb,
      N_("Set the amount of characters per inch."), "REAL"},
     /*
      * not fixed for cairo backend: disable
      *
     {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
-     N_("Stretch characters in y-direction to fill lines."), NULL},
+     N_("Stretch characters in y-direction to fill lines."), nullptr},
      */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
      N_("Make all glib warnings fatal."), "REAL"},
 
-    {NULL}
+    {nullptr}
 
   };
-  GError *error = NULL;
-  FILE *IN = NULL;
+  GError *error = nullptr;
+  FILE *IN = nullptr;
   GList *paragraphs;
   GList *pango_lines;
   PangoContext *pango_context;
@@ -640,7 +645,7 @@ int main(int argc, char *argv[])
   int max_width = 0, w;
   GOptionGroup *options;
   cairo_t *cr;
-  cairo_surface_t *surface = NULL;
+  cairo_surface_t *surface = nullptr;
   double surface_page_width = 0, surface_page_height = 0;
 
   /* Set locale from environment */
@@ -658,12 +663,12 @@ int main(int argc, char *argv[])
   /* Init page_layout_t parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0.0L;
 
-  options = g_option_group_new("main","","",&page_layout, NULL);
+  options = g_option_group_new("main","","",&page_layout, nullptr);
   g_option_group_add_entries(options, entries);
   g_option_group_set_translation_domain(options, GETTEXT_PACKAGE);
   g_option_context_set_main_group(ctxt, options);
 #if 0
-  g_option_context_add_main_entries(ctxt, entries, NULL);
+  g_option_context_add_main_entries(ctxt, entries, nullptr);
 #endif
   
   /* Parse command line */
@@ -671,6 +676,12 @@ int main(int argc, char *argv[])
     {
       fprintf(stderr, _("Command line error: %s\n"), error->message);
       exit(1);
+    }
+  
+  if (do_show_version)
+    {
+      printf("Version: %s\n", PACKAGE_STRING);
+      exit(0);
     }
   
   if (do_fatal_warnings)
@@ -696,7 +707,7 @@ int main(int argc, char *argv[])
     }
 
   // For now always write to stdout
-  if (output == NULL)
+  if (output == nullptr)
     output_fh = stdout;
   else
     {
@@ -713,7 +724,7 @@ int main(int argc, char *argv[])
   page_height = paper_sizes[(int)paper_type].height;
 
   /* Deduce output format from file name if not explicitely set */
-  if (!output_format_set && output != NULL)
+  if (!output_format_set && output != nullptr)
     {
       if (g_str_has_suffix(output, ".svg") || g_str_has_suffix(output, ".SVG"))
         output_format = FORMAT_SVG;
@@ -733,17 +744,17 @@ int main(int argc, char *argv[])
         
   if (output_format == FORMAT_POSTSCRIPT)
     surface = cairo_ps_surface_create_for_stream(&paps_cairo_write_func,
-                                                 NULL,
+                                                 nullptr,
                                                  surface_page_width,
                                                  surface_page_height);
   else if (output_format == FORMAT_PDF)
     surface = cairo_pdf_surface_create_for_stream(&paps_cairo_write_func,
-                                                  NULL,
+                                                  nullptr,
                                                   surface_page_width,
                                                   surface_page_height);
   else 
     surface = cairo_svg_surface_create_for_stream(&paps_cairo_write_func,
-                                                  NULL,
+                                                  nullptr,
                                                   surface_page_width,
                                                   surface_page_height);
 
@@ -861,7 +872,7 @@ int main(int argc, char *argv[])
 
   page_layout.scale_x = page_layout.scale_y = 1.0;
 
-  if (encoding == NULL)
+  if (encoding == nullptr)
     encoding = get_encoding();
 
   text = read_file(IN, encoding);
@@ -898,11 +909,11 @@ read_file (FILE   *file,
   GString *inbuf;
   char *text;
   char buffer[BUFSIZE];
-  GIConv cvh = NULL;
+  GIConv cvh = nullptr;
   gsize inc_seq_bytes = 0;
 
 
-  if (encoding != NULL)
+  if (encoding != nullptr)
     {
       cvh = g_iconv_open ("UTF-8", encoding);
       if (cvh == (GIConv)-1)
@@ -912,7 +923,7 @@ read_file (FILE   *file,
         }
     }
 
-  inbuf = g_string_new (NULL);
+  inbuf = g_string_new (nullptr);
   while (1)
     {
       char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
@@ -928,10 +939,10 @@ read_file (FILE   *file,
           g_string_free (inbuf, TRUE);
           exit(1);
         }
-      else if (bp == NULL)
+      else if (bp == nullptr)
         break;
 
-      if (cvh != NULL)
+      if (cvh != nullptr)
         {
           ib = buffer;
           iblen = strlen (ib);
@@ -970,7 +981,7 @@ read_file (FILE   *file,
   text = inbuf->str;
   g_string_free (inbuf, FALSE);
 
-  if (encoding != NULL && cvh != NULL)
+  if (encoding != nullptr && cvh != nullptr)
     g_iconv_close(cvh);
 
   return text;
@@ -989,7 +1000,7 @@ split_text_into_paragraphs (cairo_t *cr,
   const char *p = text;
   char *next;
   gunichar wc;
-  GList *result = NULL;
+  GList *result = nullptr;
   const char *last_para = text;
   PangoAttrList *attrs = pango_attr_list_new ();
   pango_attr_list_insert(attrs, pango_attr_insert_hyphens_new(page_layout->do_show_hyphens));
@@ -1023,7 +1034,7 @@ split_text_into_paragraphs (cairo_t *cr,
   else
     {
 
-      while (p != NULL && *p)
+      while (p != nullptr && *p)
         {
           wc = g_utf8_get_char (p);
           next = g_utf8_next_char (p);
@@ -1054,13 +1065,13 @@ split_text_into_paragraphs (cairo_t *cr,
                    * Those are not reliable to render the characters exactly according to the given CPI.
                    * So re-calculate the width to wrap up to be comfortable with CPI.
                    */
-                  wchar_t *wtext = NULL, *wnewtext = NULL;
-                  gchar *newtext = NULL;
+                  wchar_t *wtext = nullptr, *wnewtext = nullptr;
+                  gchar *newtext = nullptr;
                   gsize len, col, i, wwidth = 0;
                   PangoRectangle ink_rect, logical_rect;
 
-                  wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, NULL, NULL, NULL);
-                  if (wtext == NULL)
+                  wtext = (wchar_t *)g_utf8_to_ucs4 (para->text, para->length, nullptr, nullptr, nullptr);
+                  if (wtext == nullptr)
                     {
                       fprintf (stderr, _("%s: Unable to convert UTF-8 to UCS-4.\n"), g_get_prgname ());
                     fail:
@@ -1077,7 +1088,7 @@ split_text_into_paragraphs (cairo_t *cr,
                       /* need to wrap them up */
                       wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
                       para->clipped = TRUE;
-                      if (wnewtext == NULL)
+                      if (wnewtext == nullptr)
                         {
                           fprintf (stderr, _("%s: Unable to allocate the memory.\n"), g_get_prgname ());
                           goto fail;
@@ -1094,8 +1105,8 @@ split_text_into_paragraphs (cairo_t *cr,
                         }
                       wnewtext[i] = 0L;
 
-                      newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, NULL, NULL, NULL);
-                      if (newtext == NULL)
+                      newtext = g_ucs4_to_utf8 ((const gunichar *)wnewtext, i, nullptr, nullptr, nullptr);
+                      if (newtext == nullptr)
                         {
                           fprintf (stderr, _("%s: Unable to convert UCS-4 to UTF-8.\n"), g_get_prgname ());
                           goto fail;
@@ -1165,7 +1176,7 @@ GList *
 split_paragraphs_into_lines(page_layout_t *page_layout,
                             GList         *paragraphs)
 {
-  GList *line_list = NULL;
+  GList *line_list = nullptr;
   int max_height = 0;
   /* Read the file */
 
@@ -1177,7 +1188,7 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
     {
       int para_num_lines, i;
       LineLink *line_link;
-      Paragraph *para = par_list->data;
+      Paragraph *para = (Paragraph*)par_list->data;
 
       para_num_lines = pango_layout_get_line_count(para->layout);
 
@@ -1294,7 +1305,7 @@ output_pages(cairo_surface_t *surface,
   int page_idx = 1;
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
   int height = 0;
-  LineLink *prev_line_link = NULL;
+  LineLink *prev_line_link = nullptr;
   int num_pages = -1; // TBD Calculate this in advance!
   int title_height = 0;
 
@@ -1306,7 +1317,7 @@ output_pages(cairo_surface_t *surface,
   }
   while(pango_lines)
     {
-      LineLink *line_link = pango_lines->data;
+      LineLink *line_link = (LineLink*)pango_lines->data;
       PangoLayoutLine *line = line_link->pango_line;
       gboolean draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
       
@@ -1503,14 +1514,14 @@ char *
 get_date(char *date, int maxlen)
 {
   time_t t;
-  GIConv cvh = NULL;
+  GIConv cvh = nullptr;
   GString *inbuf;
   char *ib, *ob, obuffer[BUFSIZE * 6], *bp;
   gsize iblen, oblen;
-  static char *date_utf8 = NULL;
+  static char *date_utf8 = nullptr;
 
-  if (date_utf8 == NULL) {
-    t = time(NULL);
+  if (date_utf8 == nullptr) {
+    t = time(nullptr);
     strftime(date, maxlen, "%c", localtime(&t));
 
     cvh = g_iconv_open("UTF-8", get_encoding());
@@ -1519,7 +1530,7 @@ get_date(char *date, int maxlen)
       exit(1);
     }
 
-    inbuf = g_string_new(NULL);
+    inbuf = g_string_new(nullptr);
     ib = bp = date;
     iblen = strlen(ib);
     ob = bp = obuffer;

@@ -30,7 +30,7 @@ endif
 #  install_dir: join_paths(get_option('includedir'), 'paps'))
 
 paps = executable('paps',
-                  ['paps.c'],
+                  ['paps.cc'],
                   c_args: ['-DHAVE_CONFIG_H'],
                   include_directories: incs,
                   dependencies : [pango_dep, cairo_dep, glib_dep, gobject_dep],

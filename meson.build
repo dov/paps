@@ -1,6 +1,6 @@
-project('paps', 'c',
-        version: '0.7.1',
-        default_options : ['c_std=c99'],
+project('paps', 'c', 'cpp',
+        version: '0.7.9',
+        default_options : ['std=c++17'],
         meson_version : '>= 0.44')
 
 # C compiler. This is the cross compiler if we're cross-compiling
@@ -45,6 +45,7 @@ if buildtype == 'debug' or buildtype == 'debugoptimized'
 endif
 
 cdata.set_quoted('GETTEXT_PACKAGE', meson.project_name())
+cdata.set_quoted('PACKAGE_STRING', 'paps-' + meson.project_version())
 
 # write config.h
 config_h = configure_file(output: 'config.h', configuration: cdata)
