@@ -1,6 +1,6 @@
 project('paps', 'c', 'cpp',
         version: '0.7.9',
-        default_options : ['std=c++17'],
+        default_options : ['cpp_std=c++17'],
         meson_version : '>= 0.44')
 
 # C compiler. This is the cross compiler if we're cross-compiling
