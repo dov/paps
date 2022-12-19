@@ -1,3 +1,15 @@
+Overview of changes between 0.7.0 and 0.7.9
+=============================================
+
+- Switch to C++17
+
+- The header and footers are now modifiable by a syntax borrowed from
+  python and the fmt library. E.g. the following command line shows
+  what is possible:
+
+paps --header-left="{now:%Y-%m-%d %H:%M}" --header-center="{path}" --header-right="Page {page_idx:02d}/{num_pages:02d}" --header -o hello.pdf paps.cc
+
+
 Overview of changes between 0.7.0 and 0.7.1
 =============================================
 

@@ -3,6 +3,10 @@
 paps is a command line program for converting Unicode text encoded in UTF-8
 to postscript and pdf by using pango.
 
+# Installation instructions
+
+See file:INSTALL.md
+
 # Example
 
 Here is the output from processing the file misc/small-hello.utf8:

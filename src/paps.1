@@ -272,7 +272,29 @@ Set gutter width. Default is 40 postscript points.
 .TP
 .B \-\-header
 Draw page header with document name, date and page number for each page. Header
-is not printed by default.
+is not printed by default. 
+.TP
+.B \-\-header-left=fmt
+Sets the formatting for the left side of the header. See FORMAT for an explanation of the header and footer formatting. Default is the current localized date.
+.TP
+.B \-\-header-center=fmt
+Sets the formatting for the center of the header. See FORMAT for an explanation of the header and footer formatting. Default is the filename.
+.TP
+.B \-\-header-right=fmt
+Sets the formatting for the center of the header. See FORMAT for an explanation of the header and footer formatting. Default is the Page number.
+.TP
+.B \-\-footer
+Draw page footer with document name, date and page number for each page. Footer
+is not printed by default. 
+.TP
+.B \-\-footer-left=fmt
+Sets the formatting for the left side of the footer. See FORMAT for an explanation of the footer and footer formatting. The default formatting is an empty string.
+.TP
+.B \-\-footer-center=fmt
+Sets the formatting for the center of the footer. See FORMAT for an explanation of the footer and footer formatting. The default formatting is an empty string.
+.TP
+.B \-\-footer-right=fmt
+Sets the formatting for the center of the footer. See FORMAT for an explanation of the footer and footer formatting. The default formatting is an empty string.
 .TP
 .B \-\-title="text"
 Use \fItext\fR as the title string for page header. By default the input
@@ -322,6 +344,78 @@ Successful completion.
 .RS 6n
 .rt
 An error occurred.
+.RE
+
+.SH HEADER AND FOOTER FORMATTING
+.sp
+.LP
+The header and footers may be formatted by a mini language based on the python f-strings. Text outside of squiggly brackets are entered literally in the output. Text inside squiggly brackets contain one of the following predefined list of variables:
+
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBnow\fR
+.ad
+.RS 18n
+.rt
+The current time
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBmtime\fR
+.ad
+.RS 18n
+.rt
+The modification time of the file being printed
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBpage_idx\fR
+.ad
+.RS 18n
+.rt
+The page index of the page
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBnum_pages\fR
+.ad
+.RS 18n
+.rt
+The total number of pages in the document
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBfilename\fR
+.ad
+.RS 18n
+.rt
+The filename (basename) of the document
+.RE
+.IP
+.sp
+.ne 2
+.mk
+.na
+\fBpath\fR
+.ad
+.RS 18n
+.rt
+The full path of the document
 .RE
 
 .SH EXAMPLES
@@ -383,6 +477,25 @@ locale.
 .in +2
 .nf
 $ \fBLC_ALL=ja_JP.eucjp paps ja_JP_eucjp.txt > out.ps\fR
+.fi
+.in -2
+.LP
+Here paps will assume the input is in Japanese EUC encoding and will use
+Japanese eucjp locale to render the output. If \-\-header is added, the date is
+printed in Japanese.
+
+.LP
+\fBExample 4\fR Change the header and footer 
+.P
+Override the header and the footer to show only the page in the middle of the footer.
+.sp
+.in +2
+.nf
+$ \fBpaps --separation-lines -o /tmp/foo.pdf --header --header-left='' \\
+ --header-center='{path}' --header-right='' --footer \\
+ --footer-left='Printed {now:%c}' \\
+ --footer-right='Page {page_idx}/{num_pages}' \\
+ `pwd`/paps.ccx\fR
 .fi
 .in -2
 .LP
