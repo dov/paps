@@ -1360,11 +1360,8 @@ output_pages(cairo_surface_t *surface,
              page_layout_t *page_layout,
              PangoContext  *pango_context)
 {
-  int column_idx = 0;
-  int column_y_pos = 0;
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
   int height = 0;
-  LineLink *prev_line_link = nullptr;
   int num_pages = -1; // This will be calculated in the measurement pass below
   int title_height = 0;
   GList *pango_lines_start = pango_lines;
@@ -1379,6 +1376,10 @@ output_pages(cairo_surface_t *surface,
     {
       int page_idx = 1;
       bool measure_only = i==0;
+      LineLink *prev_line_link = nullptr;
+      int column_idx = 0;
+      int column_y_pos = 0;
+
       column_y_pos = 0;
       document_info["page_idx"] = page_idx;
 
@@ -1671,7 +1672,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
-  PangoRectangle ink_rect, logical_rect;
+  PangoRectangle ink_rect={0,0,0,0}, logical_rect = {0,0,0,0};
   /* Assume square aspect ratio for now */
   double x_pos, y_pos;
   int height;

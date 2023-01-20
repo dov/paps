@@ -1,0 +1,125 @@
+#!/usr/bin/python
+
+######################################################################
+#  Use GNU source-hightlight to turn source code into pango markup
+#  and pipe to paps.
+#
+#  This is currently of limited use for long lines, as the paps/pango
+#  line breaking algorithm will insert hyphens in the text.
+#
+#  2023-01-14 Sat
+# Dov Grobgeld <dov.grobgeld@gmail.com>
+######################################################################
+
+import argparse
+import subprocess
+from pathlib import Path
+import sys
+
+def xec(cmd, decode=True, chomp=True, verbose=False):
+  '''Run a command a returns its stdout output.
+
+  decode -- run (utf8) decode of the resulting string
+  chomp -- get rid of the last newline (like in perl)
+  '''
+  ph = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
+  if verbose:
+    sys.stderr.write(cmd + '\n')
+  res = b''
+  maxsize = 1024
+  while True:
+    buf = ph.stdout.read()
+    if len(buf)==0:
+      break
+    res += buf
+  ph.wait()
+  if decode:
+    res=res.decode()
+  if chomp:
+    res = res[:-1]
+  return res
+
+
+# Defaults
+
+# TBD - Make this a configuration variable
+pango_outlang_path = '/usr/local/share/paps/pango_markup.outlang'
+
+parser = argparse.ArgumentParser(description='Process a file')
+parser.add_argument('-o', '--output',
+                    dest='output',
+                    action='store',
+                    type=str,
+                    default='-',
+                    help='Output filename')
+parser.add_argument('-v', '--verbose',
+                    dest='verbose',
+                    action='store_true',
+                    help='Verbose editing')
+parser.add_argument('--pango-outlang-path',
+                    dest='pango_outlang_path',
+                    action='store',
+                    type =str,
+                    default = pango_outlang_path,
+                    help='Path to pango_markup.outlang')
+parser.add_argument('--source-lang',
+                    dest='source_lang',
+                    action='store',
+                    type =str,
+                    default = None,
+                    help='Override the source lang')
+
+# TBD add additional paps variables, or pass them verbatim
+parser.add_argument('--columns',
+                    dest='columns',
+                    action='store',
+                    type =int,
+                    default = 1,
+                    help='Number of columns in paps output')
+parser.add_argument('--landscape',
+                    dest='landscape',
+                    action='store_true',
+                    help='Output landscape')
+parser.add_argument('--font',
+                    dest='font',
+                    action='store',
+                    default='',
+                    help='Paps font')
+parser.add_argument('filename', nargs='*', help='Input. Default is stdin')
+args = parser.parse_args()
+Output = args.output
+
+# Create the pmu file
+markups = []
+for fn in args.filename:
+  source_lang = ({'.py' : 'python',
+                  '.cpp' : 'C',
+                  '.cxx' : 'C',
+                  '.cc'  : 'C',
+                  '.c'   : 'C'
+                  }.get(Path(fn).suffix)
+                 if args.source_lang is None
+                 else args.source_lang)
+
+  markups.append(xec(f'source-highlight -s {source_lang} --outlang-def {args.pango_outlang_path} --input {fn}', verbose=args.verbose))
+
+with open('/tmp/foo.pmu','w') as ofh:
+  ofh.write('----'.join(markups))
+
+title =','.join(args.filename)
+
+print(xec(f'paps  --header '
+          f'{"--landscape " if args.landscape else ""}'
+          f'--columns {args.columns} '
+          f'--separation-lines '
+          f'--markup '
+          f'--header-center "{title}" '
+          + (f' --font "{args.font}" ' if len else "")
+          + f'--header-left "{{now:%c}}" '
+          f'--header-right="Page {{page_idx}}/{{num_pages}}" '
+          '--format pdf '
+          '--wrap=char '
+          '--show-wrap '
+          '-o /tmp/foo.pdf '
+          '/tmp/foo.pmu ',
+          verbose=1))
