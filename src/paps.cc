@@ -1070,8 +1070,11 @@ split_text_into_paragraphs (PangoContext *pango_context,
    * I tested it and found that this is much slower than the split and
    * assign method used below. Otherwise we might as well use this single
    * chunk method always.
+   *
+   * I don't think we need this at all, and are better of reading one
+   * line at a time...
    */
-  if (page_layout->do_use_markup)
+  if (0 && page_layout->do_use_markup)
     {
       Paragraph *para = g_new (Paragraph, 1);
       para->wrapped = false; /* No wrapped chars for markups */
@@ -1172,7 +1175,10 @@ split_text_into_paragraphs (PangoContext *pango_context,
                           fprintf (stderr, _("%s: Unable to convert UCS-4 to UTF-8.\n"), g_get_prgname ());
                           goto fail;
                         }
-                      pango_layout_set_text (para->layout, newtext, -1);
+                      if (page_layout->do_use_markup)
+                          pango_layout_set_markup (para->layout, newtext, -1);
+                      else
+                          pango_layout_set_text (para->layout, newtext, -1);
                       pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
                       paint_width = logical_rect.width / PANGO_SCALE;
                       g_free (wnewtext);
@@ -1193,7 +1199,10 @@ split_text_into_paragraphs (PangoContext *pango_context,
                 }
               else
                 {
-                  pango_layout_set_text (para->layout, para->text, para->length);
+                  if (page_layout->do_use_markup)
+                      pango_layout_set_markup (para->layout, para->text, para->length);
+                  else
+                      pango_layout_set_text (para->layout, para->text, para->length);
                   pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
 
                   pango_layout_set_wrap (para->layout, opt_wrap);

@@ -15,6 +15,7 @@ import argparse
 import subprocess
 from pathlib import Path
 import sys
+import tempfile
 
 def xec(cmd, decode=True, chomp=True, verbose=False):
   '''Run a command a returns its stdout output.
@@ -103,23 +104,28 @@ for fn in args.filename:
 
   markups.append(xec(f'source-highlight -s {source_lang} --outlang-def {args.pango_outlang_path} --input {fn}', verbose=args.verbose))
 
-with open('/tmp/foo.pmu','w') as ofh:
-  ofh.write('----'.join(markups))
+with tempfile.TemporaryDirectory() as tmp:
+  pmu_file = Path(tmp) / 'src-to-paps.pmu'
 
-title =','.join(args.filename)
-
-print(xec(f'paps  --header '
-          f'{"--landscape " if args.landscape else ""}'
-          f'--columns {args.columns} '
-          f'--separation-lines '
-          f'--markup '
-          f'--header-center "{title}" '
-          + (f' --font "{args.font}" ' if len else "")
-          + f'--header-left "{{now:%c}}" '
-          f'--header-right="Page {{page_idx}}/{{num_pages}}" '
-          '--format pdf '
-          '--wrap=char '
-          '--show-wrap '
-          '-o /tmp/foo.pdf '
-          '/tmp/foo.pmu ',
-          verbose=1))
+  with open(pmu_file,'w') as ofh:
+    ofh.write('----'.join(markups))
+  
+  title =','.join(args.filename)
+  
+  output_args = f'-o {Output} ' if Output!='-' else ''
+  
+  print(xec(f'paps  --header '
+            f'{"--landscape " if args.landscape else ""}'
+            f'--columns {args.columns} '
+            f'--separation-lines '
+            f'--markup '
+            f'--header-center "{title}" '
+            + (f' --font "{args.font}" ' if len else "")
+            + f'--header-left "{{now:%c}}" '
+            f'--header-right="Page {{page_idx}}/{{num_pages}}" '
+            '--format pdf '
+            '--wrap=char '
+            '--show-wrap '
+            f'{output_args}'
+            f'{pmu_file} ',
+            verbose=1))
