@@ -110,7 +110,10 @@ static const paper_size_t paper_sizes[] = {
     { 842, 1190}       /* A3 */
 };
 
-typedef struct {
+struct PageLayout {
+  ~PageLayout() {
+  };
+
   int column_width;
   int column_height;
   int num_columns;
@@ -155,15 +158,15 @@ typedef struct {
   gdouble lpi;
   gdouble cpi;
   dict_t document_info;
-} page_layout_t;
+};
 
-typedef struct {
+struct LineLink {
   PangoLayoutLine *pango_line;
   PangoRectangle logical_rect;
   PangoRectangle ink_rect;
   int formfeed;
   bool wrapped;   // Whether the paragraph was character wrapped
-} LineLink;
+};
 
 typedef struct _Paragraph Paragraph;
 
@@ -180,47 +183,47 @@ struct _Paragraph {
 };
 
 /* Information passed in user data when drawing outlines */
-static GList *split_paragraphs_into_lines  (page_layout_t   *page_layout,
+static GList *split_paragraphs_into_lines  (PageLayout   *page_layout,
                                             GList           *paragraphs);
 static char  *read_file                    (FILE            *file,
                                             gchar           *encoding);
 static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             int              paint_width,
                                             const char      *text);
 static int    output_pages                 (cairo_surface_t * surface,
                                             cairo_t         *cr,
                                             GList           *pango_lines,
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             PangoContext    *pango_context);
 static void   eject_column                 (cairo_t         *cr,
                                             double          title_height,
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             int              column_idx,
                                             bool             measure_only);
 static void   eject_page                   (cairo_t         *cr);
 static void   start_page                   (cairo_surface_t *surface,
                                             cairo_t         *cr, 
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             bool            measure_only);
 static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_idx,
                                             int              column_pos,
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             PangoLayoutLine *line,
                                             bool         draw_wrap_character);
 static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             bool         is_footer,
-                                            page_layout_t   *page_layout,
+                                            PageLayout   *page_layout,
                                             PangoContext    *ctx,
                                             int              page,
                                             int              num_pages,
                                             dict_t&           document_info,
                                             bool             measure_only);
 static void   postscript_dsc_comments      (cairo_surface_t *surface,
-                                            page_layout_t   *page_layout);
+                                            PageLayout   *page_layout);
 
-static void build_document_info            (page_layout_t* page_layout,
+static void build_document_info            (PageLayout* page_layout,
                                             dict_t& document_info);
 
 bool
@@ -492,7 +495,7 @@ _paps_arg_lpi_cb(const gchar *option_name,
 {
   bool retval = true;
   gchar *p = nullptr;
-  page_layout_t *page_layout = (page_layout_t*)data;
+  PageLayout *page_layout = (PageLayout*)data;
 
   if (value && *value)
     {
@@ -520,7 +523,7 @@ _paps_arg_cpi_cb(const gchar *option_name,
 {
   bool retval = true;
   gchar *p = nullptr;
-  page_layout_t *page_layout = (page_layout_t*)data;
+  PageLayout *page_layout = (PageLayout*)data;
   
   if (value && *value)
     {
@@ -587,7 +590,7 @@ int main(int argc, char *argv[])
   gchar *footer_left = nullptr;
   gchar *footer_center = nullptr;
   gchar *footer_right = nullptr;
-  page_layout_t page_layout;
+  PageLayout page_layout;
   GOptionContext *ctxt = g_option_context_new("[text file]");
   GOptionEntry entries[] = {
     {"landscape", 0, 0, G_OPTION_ARG_NONE, &do_landscape,
@@ -705,7 +708,7 @@ int main(int argc, char *argv[])
   paps_glyph_face = cairo_user_font_face_create();
   cairo_user_font_face_set_render_glyph_func(paps_glyph_face, paps_render_glyph);
 
-  /* Init page_layout_t parameters set by the option parsing */
+  /* Init PageLayout parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0.0L;
 
   options = g_option_group_new("main","","",&page_layout, nullptr);
@@ -1054,7 +1057,7 @@ read_file (FILE   *file,
  */
 static GList *
 split_text_into_paragraphs (PangoContext *pango_context,
-                            page_layout_t *page_layout,
+                            PageLayout *page_layout,
                             int paint_width,  /* In pixels */
                             const char *text)
 {
@@ -1243,7 +1246,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
 /* Split a list of paragraphs into a list of lines.
  */
 GList *
-split_paragraphs_into_lines(page_layout_t *page_layout,
+split_paragraphs_into_lines(PageLayout *page_layout,
                             GList         *paragraphs)
 {
   GList *line_list = nullptr;
@@ -1300,7 +1303,7 @@ split_paragraphs_into_lines(page_layout_t *page_layout,
  * Define PostScript document header information.
  */
 void
-postscript_dsc_comments(cairo_surface_t *surface, page_layout_t *pl)
+postscript_dsc_comments(cairo_surface_t *surface, PageLayout *pl)
 {
   char buf[CAIRO_COMMENT_MAX];
   int x, y;
@@ -1366,7 +1369,7 @@ int
 output_pages(cairo_surface_t *surface,
              cairo_t       *cr,
              GList         *pango_lines,
-             page_layout_t *page_layout,
+             PageLayout *page_layout,
              PangoContext  *pango_context)
 {
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
@@ -1472,7 +1475,7 @@ output_pages(cairo_surface_t *surface,
 
 void eject_column(cairo_t *cr,
                   double title_height,
-                  page_layout_t *page_layout,
+                  PageLayout *page_layout,
                   int column_idx,
                   bool measure_only)
 {
@@ -1515,7 +1518,7 @@ void eject_page(cairo_t *cr)
 
 void start_page(cairo_surface_t *surface,
                 cairo_t *cr,
-                page_layout_t *page_layout,
+                PageLayout *page_layout,
                 bool measure_only)
 {
   cairo_identity_matrix(cr);
@@ -1565,7 +1568,7 @@ void
 draw_line_to_page(cairo_t *cr,
                   int column_idx,
                   int column_pos,
-                  page_layout_t *page_layout,
+                  PageLayout *page_layout,
                   PangoLayoutLine *line,
                   bool draw_wrap_character)
 {
@@ -1672,7 +1675,7 @@ get_date()
 int
 draw_page_header_line_to_page(cairo_t         *cr,
                               bool             is_footer,
-                              page_layout_t   *page_layout,
+                              PageLayout   *page_layout,
                               PangoContext    *ctx,
                               int              page,
                               int              num_pages,
@@ -1816,7 +1819,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 // Build the document info hash table that may be used in the headers
 // and footers
 static void
-build_document_info(page_layout_t* page_layout,
+build_document_info(PageLayout* page_layout,
                     dict_t& document_info)
 {
   document_info["filename"] = page_layout->filename;

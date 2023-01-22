@@ -13,7 +13,7 @@ Here is the output from processing the file misc/small-hello.utf8:
 
 ![Example image](misc/small-hello.png)
 
-## History
+# History
 
 paps was written around 2005 to enable printing of plain text unicode UTF-8 files. It is named by the use of the excellent Pango library (from which it took its first two characters) and outputed postscript (ps, the last two characters). When the initial version was written, there was no simple way of translating the output of pango to postscript outlines, and therefore initially output bitmap fonts in the postscript output.
 
@@ -25,8 +25,6 @@ But I wanted to have resolution independent postscript, and therefore in a subse
 In the early 2010's the library cairo and its accompanying pangocairo library finally created an easy way of converting pango output to postscript in an idiomatic way. But it took me several years until I finally rewrote paps to make use of them. 
 
 But I finally did so and released the resulting version on github in 2015 as version 0.7.0 . 
-
-But even so the new cairo based version was not picked up! E.g. Fedora still supplies the old 0.6.8 version without cairo!
 
 # Usage
 
