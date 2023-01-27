@@ -3,6 +3,19 @@ project('paps', 'c', 'cpp',
         default_options : ['cpp_std=c++17'],
         meson_version : '>= 0.44')
 
+fmt_dep = dependency('fmt', required : false)
+
+if not fmt_dep.found()
+  fmt_proj = subproject('fmt')
+  fmt_dep = libsimple_proj.get_variable('fmt_dep')
+endif
+
+pkg = import('pkgconfig')
+pango_dep = dependency('pangoft2')
+cairo_dep = dependency('pangocairo')
+glib_dep = dependency('glib-2.0')
+gobject_dep = dependency('gobject-2.0')
+
 # C compiler. This is the cross compiler if we're cross-compiling
 cc = meson.get_compiler('c')
 
