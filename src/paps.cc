@@ -1467,7 +1467,6 @@ output_pages(cairo_surface_t *surface,
         {
           num_pages = page_idx;
           document_info["num_pages"] = num_pages;
-          print("Got {} pages\n", num_pages);
         }
     }
   return num_pages;
