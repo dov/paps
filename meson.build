@@ -60,4 +60,12 @@ config_h = configure_file(output: 'config.h', configuration: cdata)
 
 incs = include_directories('.', 'src')
 
+# Install the src-to-paps script with its pango_markup.outlang
+# dependancy.
+install_data(['misc/pango_markup.outlang'],
+             install_dir : 'share/paps')
+
+install_data(['scripts/src-to-paps'],
+             install_dir : 'bin')
+
 subdir('src')
