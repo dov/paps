@@ -7,7 +7,7 @@ fmt_dep = dependency('fmt', required : false)
 
 if not fmt_dep.found()
   fmt_proj = subproject('fmt')
-  fmt_dep = libsimple_proj.get_variable('fmt_dep')
+  fmt_dep = fmt_proj.get_variable('fmt_dep')
 endif
 
 pkg = import('pkgconfig')
