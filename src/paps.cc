@@ -1052,6 +1052,17 @@ read_file (FILE   *file,
   return text;
 }
 
+// Turn off the use of hyphens
+static void
+layout_turn_off_hyphens(PangoLayout *layout)
+{
+  // Request not to get any hypens
+  PangoAttrList *attrs = pango_layout_get_attributes(layout);
+  if (attrs == NULL)
+    attrs = pango_attr_list_new ();
+  pango_attr_list_insert(attrs, pango_attr_insert_hyphens_new(FALSE));
+  pango_layout_set_attributes (layout, attrs);
+}
 
 /* Take a UTF8 string and break it into paragraphs on \n characters
  */
@@ -1066,8 +1077,6 @@ split_text_into_paragraphs (PangoContext *pango_context,
   gunichar wc;
   GList *result = nullptr;
   const char *last_para = text;
-  PangoAttrList *attrs = pango_attr_list_new ();
-  pango_attr_list_insert(attrs, pango_attr_insert_hyphens_new(page_layout->do_show_hyphens));
 
   /* If we are using markup we treat the entire text as a single paragraph.
    * I tested it and found that this is much slower than the split and
@@ -1077,6 +1086,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
    * I don't think we need this at all, and are better of reading one
    * line at a time...
    */
+#if 0
   if (0 && page_layout->do_use_markup)
     {
       Paragraph *para = g_new (Paragraph, 1);
@@ -1099,6 +1109,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
       result = g_list_prepend (result, para);
     }
   else
+#endif
     {
 
       while (p != nullptr && *p)
@@ -1121,9 +1132,6 @@ split_text_into_paragraphs (PangoContext *pango_context,
               if (wc == '\r' && *next == '\n')
                   next = g_utf8_next_char(next);
               para->layout = pango_layout_new (pango_context);
-
-              pango_layout_set_attributes (para->layout,attrs);
-
 
               if (page_layout->cpi > 0.0L)
                 {
@@ -1182,6 +1190,11 @@ split_text_into_paragraphs (PangoContext *pango_context,
                           pango_layout_set_markup (para->layout, newtext, -1);
                       else
                           pango_layout_set_text (para->layout, newtext, -1);
+
+                      // Request not to get any hypens
+                      if (!page_layout->do_show_hyphens)
+                        layout_turn_off_hyphens(para->layout);
+
                       pango_layout_get_extents (para->layout, &ink_rect, &logical_rect);
                       paint_width = logical_rect.width / PANGO_SCALE;
                       g_free (wnewtext);
@@ -1209,6 +1222,9 @@ split_text_into_paragraphs (PangoContext *pango_context,
                   pango_layout_set_width (para->layout, paint_width * PANGO_SCALE);
 
                   pango_layout_set_wrap (para->layout, opt_wrap);
+
+                  if (!page_layout->do_show_hyphens)
+                    layout_turn_off_hyphens(para->layout);
 
                   if (opt_wrap == PANGO_WRAP_CHAR)
                       para->wrapped = true;                    

@@ -40,6 +40,11 @@ def xec(cmd, decode=True, chomp=True, verbose=False):
     res = res[:-1]
   return res
 
+def arg_if_not_none(param_name, val):
+  '''Return either an empty string or the parameter with its value'''
+  if val is None:
+    return ''
+  return param_name + ' ' + val + ' '
 
 # Defaults
 
@@ -63,12 +68,24 @@ parser.add_argument('--pango-outlang-path',
                     type =str,
                     default = pango_outlang_path,
                     help='Path to pango_markup.outlang')
-parser.add_argument('--source-lang',
+parser.add_argument('-s', '--source-lang',
                     dest='source_lang',
                     action='store',
                     type =str,
                     default = None,
                     help='Override the source lang')
+parser.add_argument('--style-file',
+                    dest='style_file',
+                    action='store',
+                    type =str,
+                    default = None,
+                    help='Set a style file for syntax highlight')
+parser.add_argument('--style-css-file',
+                    dest='style_css_file',
+                    action='store',
+                    type =str,
+                    default = None,
+                    help='Set a style file for syntax highlight')
 
 # TBD add additional paps variables, or pass them verbatim
 parser.add_argument('--columns',
@@ -102,7 +119,14 @@ for fn in args.filename:
                  if args.source_lang is None
                  else args.source_lang)
 
-  markups.append(xec(f'source-highlight -s {source_lang} --outlang-def {args.pango_outlang_path} --input {fn}', verbose=args.verbose))
+  markups.append(
+    xec(f'source-highlight '
+        + (f'-s {source_lang} ' if source_lang is not None else '')
+        + arg_if_not_none('--style-file', args.style_file)
+        + arg_if_not_none('--style-css-file', args.style_css_file)
+        + f'--outlang-def {args.pango_outlang_path} '
+        f'--input {fn}',
+        verbose=args.verbose))
 
 with tempfile.TemporaryDirectory() as tmp:
   pmu_file = Path(tmp) / 'src-to-paps.pmu'
@@ -114,18 +138,18 @@ with tempfile.TemporaryDirectory() as tmp:
   
   output_args = f'-o {Output} ' if Output!='-' else ''
   
-  print(xec(f'paps  --header '
-            f'{"--landscape " if args.landscape else ""}'
-            f'--columns {args.columns} '
-            f'--separation-lines '
-            f'--markup '
-            f'--header-center "{title}" '
-            + (f' --font "{args.font}" ' if len else "")
-            + f'--header-left "{{now:%c}}" '
-            f'--header-right="Page {{page_idx}}/{{num_pages}}" '
-            '--format pdf '
-            '--wrap=char '
-            '--show-wrap '
-            f'{output_args}'
-            f'{pmu_file} ',
-            verbose=1))
+  xec(f'paps  --header '
+      f'{"--landscape " if args.landscape else ""}'
+      f'--columns {args.columns} '
+      f'--separation-lines '
+      f'--markup '
+      f'--header-center "{title}" '
+      + (f' --font "{args.font}" ' if len else "")
+      + f'--header-left "{{now:%c}}" '
+      f'--header-right="Page {{page_idx}}/{{num_pages}}" '
+      '--format pdf '
+      '--wrap=char '
+      '--show-wrap '
+      f'{output_args}'
+      f'{pmu_file} ',
+      verbose=args.verbose)
