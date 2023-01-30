@@ -3,12 +3,7 @@ project('paps', 'c', 'cpp',
         default_options : ['cpp_std=c++17'],
         meson_version : '>= 0.44')
 
-fmt_dep = dependency('fmt', required : false)
-
-if not fmt_dep.found()
-  fmt_proj = subproject('fmt')
-  fmt_dep = fmt_proj.get_variable('fmt_dep')
-endif
+fmt_dep = dependency('fmt')
 
 pkg = import('pkgconfig')
 pango_dep = dependency('pangoft2')
