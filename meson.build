@@ -1,5 +1,5 @@
 project('paps', 'c', 'cpp',
-        version: '0.7.9',
+        version: '0.8.0',
         default_options : ['cpp_std=c++17'],
         meson_version : '>= 0.44')
 

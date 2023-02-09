@@ -9,7 +9,7 @@ paps_DEPENDENCIES = $(lib_LIBRARIES)
 
 AM_CPPFLAGS = -DGETTEXT_PACKAGE='"$(GETTEXT_PACKAGE)"' -DDATADIR='"$(datadir)"'
 
-EXTRA_DIST = paps.1
+EXTRA_DIST = paps.1 meson.build
 
 
 -include $(top_srcdir)/git.mk

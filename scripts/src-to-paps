@@ -35,7 +35,7 @@ def xec(cmd, decode=True, chomp=True, verbose=False):
     res += buf
   ph.wait()
   if decode:
-    res=res.decode()
+    res=res.decode(errors='ignore')
   if chomp:
     res = res[:-1]
   return res
@@ -138,18 +138,22 @@ with tempfile.TemporaryDirectory() as tmp:
   
   output_args = f'-o {Output} ' if Output!='-' else ''
   
-  xec(f'paps  --header '
-      f'{"--landscape " if args.landscape else ""}'
-      f'--columns {args.columns} '
-      f'--separation-lines '
-      f'--markup '
-      f'--header-center "{title}" '
-      + (f' --font "{args.font}" ' if len else "")
-      + f'--header-left "{{now:%c}}" '
-      f'--header-right="Page {{page_idx}}/{{num_pages}}" '
-      '--format pdf '
-      '--wrap=char '
-      '--show-wrap '
-      f'{output_args}'
-      f'{pmu_file} ',
-      verbose=args.verbose)
+  res = xec(f'paps  --header '
+            f'{"--landscape " if args.landscape else ""}'
+            f'--columns {args.columns} '
+            f'--separation-lines '
+            f'--markup '
+            f'--header-center "{title}" '
+            + (f' --font "{args.font}" ' if len else "")
+            + f'--header-left "{{now:%c}}" '
+            f'--header-right="Page {{page_idx}}/{{num_pages}}" '
+            '--format pdf '
+            '--wrap=char '
+            '--show-wrap '
+            f'{output_args}'
+            f'{pmu_file} ',
+            verbose=args.verbose,
+            decode=False,
+            chomp=False)
+  # This is how to write binary data to stdout
+  sys.stdout.buffer.write(res)

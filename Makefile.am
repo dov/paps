@@ -1,13 +1,19 @@
 NULL =
 ACLOCAL_AMFLAGS=-I m4
 SUBDIRS = src po
-EXTRA_DIST = autogen.sh intltool-extract.in intltool-merge.in intltool-update.in
+EXTRA_DIST = autogen.sh intltool-extract.in intltool-merge.in intltool-update.in scripts meson.build misc README.md INSTALL.md
 MAINTAINERCLEANFILES =		\
 	$(srcdir)/aclocal.m4	\
 	$(builddir)/config	\
 	$(NULL)
 
 -include $(top_srcdir)/git.mk
+
+dist_bin_SCRIPTS = scripts/src-to-paps
+
+# Install the pango_markup.outlang package
+papssharedir = $(prefix)/share/$(PACKAGE)
+papsshare_DATA = misc/pango_markup.outlang
 
 check-gettext:
 	@if test x$(USE_NLS) != "xyes" ; then echo "Missing gettext. Rerun configure and check for" \
