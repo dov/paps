@@ -42,8 +42,8 @@ endif
 # This is available pretty much everywhere
 cdata.set('HAVE_STRINGIZE', 1)
 
-# Assume we have nls, since paps doesn't compile without it
-cdata.set('ENABLE_NLS',1)
+# i18n support
+i18n = import('i18n')
 
 # Not really sure what this is used for, but paps doesn't compile without it.
 cdata.set_quoted('DATADIR','.')
@@ -70,3 +70,4 @@ install_data(['scripts/src-to-paps'],
              install_dir : 'bin')
 
 subdir('src')
+subdir('po')
