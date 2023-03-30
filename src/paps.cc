@@ -51,7 +51,7 @@ using namespace fmt;
 #endif
 #include <wchar.h>
 
-#if ENABLE_NLS
+#ifdef ENABLE_NLS
 #include <libintl.h>
 
 #define	_(str)		gettext(str)
@@ -700,9 +700,11 @@ int main(int argc, char *argv[])
   (void) setlocale(LC_ALL, "");
 
   /* Setup i18n */
+#ifdef ENABLE_NLS
   textdomain(GETTEXT_PACKAGE);
   bindtextdomain(GETTEXT_PACKAGE, DATADIR "/locale");
   bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+#endif
 
   /* Setup the paps glyph face */
   paps_glyph_face = cairo_user_font_face_create();
