@@ -41,6 +41,7 @@
 #include <fmt/core.h>
 #include "format_from_dict.h"
 #include <vector>
+#include <paper.h>
 
 using namespace std;
 using namespace fmt;
@@ -86,13 +87,6 @@ using namespace fmt;
 
 
 typedef enum {
-    PAPER_TYPE_A4 = 0,
-    PAPER_TYPE_US_LETTER = 1,
-    PAPER_TYPE_US_LEGAL = 2,
-    PAPER_TYPE_A3 = 3
-} paper_type_t ;
-
-typedef enum {
     FORMAT_POSTSCRIPT = 0,
     FORMAT_PDF = 1,
     FORMAT_SVG = 2
@@ -102,13 +96,6 @@ typedef struct  {
     double width;
     double height;
 } paper_size_t;
-
-static const paper_size_t paper_sizes[] = {
-    { 595.28, 841.89}, /* A4 */
-    { 612, 792},       /* US letter */
-    { 612, 1008},      /* US legal */
-    { 842, 1190}       /* A3 */
-};
 
 struct PageLayout {
   ~PageLayout() {
@@ -129,7 +116,7 @@ struct PageLayout {
   int header_sep;
   int header_height;
   int footer_height;
-  paper_type_t paper_type;
+  const struct paper *paper_type = NULL;
   gdouble scale_x;
   gdouble scale_y;
   bool do_draw_header;
@@ -238,7 +225,7 @@ string get_date();
 string fn_basename(const string& filename);
 
 FILE *output_fh;
-static paper_type_t paper_type = PAPER_TYPE_A4;
+static const struct paper *paper_type;
 static bool output_format_set = false;
 static output_format_t output_format = FORMAT_POSTSCRIPT;
 static PangoGravity gravity = PANGO_GRAVITY_AUTO;
@@ -292,14 +279,9 @@ _paps_arg_paper_cb(const char *option_name,
   
   if (value && *value)
     {
-      if (g_ascii_strcasecmp(value, "legal") == 0)
-        paper_type = PAPER_TYPE_US_LEGAL;
-      else if (g_ascii_strcasecmp(value, "letter") == 0)
-        paper_type = PAPER_TYPE_US_LETTER;
-      else if (g_ascii_strcasecmp(value, "a4") == 0)
-        paper_type = PAPER_TYPE_A4;
-      else if (g_ascii_strcasecmp(value, "a3") == 0)
-        paper_type = PAPER_TYPE_A3;
+      const struct paper *newpaper = paperinfo(value);
+      if (newpaper != NULL)
+        paper_type = newpaper;
       else {
         retval = false;
         fprintf(stderr, _("Unknown page size name: %s.\n"), value);
@@ -683,8 +665,6 @@ int main(int argc, char *argv[])
   PangoFontset *fontset;
   PangoFontMetrics *metrics;
   int total_gutter_width;
-  double page_width = paper_sizes[0].width;
-  double page_height = paper_sizes[0].height;
   int do_tumble = -1;   /* -1 means not initialized */
   int do_duplex = -1;
   const gchar *header_font_desc = MAKE_FONT_NAME (HEADER_FONT_FAMILY, HEADER_FONT_SCALE);
@@ -696,6 +676,8 @@ int main(int argc, char *argv[])
   cairo_t *cr;
   cairo_surface_t *surface = nullptr;
   double surface_page_width = 0, surface_page_height = 0;
+
+  paperinit();
 
   /* Set locale from environment */
   (void) setlocale(LC_ALL, "");
@@ -779,9 +761,19 @@ int main(int argc, char *argv[])
         }
     }
 
+  // If we have no explicit paper size, get the default.
+  if (paper_type == NULL) {
+    const char *paper_name = defaultpapername();
+    if (paper_name == NULL) {
+      fprintf(stderr, _("No page size given, and no default paper size found\n"));
+      exit(1);
+    }
+    paper_type = paperinfo(paper_name);
+  }
+
   /* Page layout */
-  page_width = paper_sizes[(int)paper_type].width;
-  page_height = paper_sizes[(int)paper_type].height;
+  double page_width = paperpswidth(paper_type);
+  double page_height = paperpsheight(paper_type);
 
   /* Deduce output format from file name if not explicitely set */
   if (!output_format_set && output != nullptr)
@@ -1369,15 +1361,12 @@ postscript_dsc_comments(cairo_surface_t *surface, PageLayout *pl)
     }
   else
     cairo_ps_surface_dsc_begin_setup(surface);
-
-  if (pl->paper_type == PAPER_TYPE_US_LEGAL)
-    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Legal");
-  if (pl->paper_type == PAPER_TYPE_US_LETTER)
-    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize Letter");
-  if (pl->paper_type == PAPER_TYPE_A4)
-    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A4");
-  if (pl->paper_type == PAPER_TYPE_A3)
-    cairo_ps_surface_dsc_comment (surface, "%%IncludeFeature: *PageSize A3");
+  gchar *comment = g_strdup_printf("%%IncludeFeature: *PageSize %s", papername(paper_type));
+  if (comment == NULL) {
+    fprintf (stderr, _("%s: Unable to allocate the memory.\n"), g_get_prgname ());
+    exit(1);
+  }
+  cairo_ps_surface_dsc_comment (surface, comment);
 }
 
 
