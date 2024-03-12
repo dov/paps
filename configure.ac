@@ -1,6 +1,7 @@
 dnl Process this file with autoconf to produce a configuration script
 AC_INIT(paps, 0.8.0, dov.grobgeld@gmail.com)
 AC_CONFIG_AUX_DIR(config)
+AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_SRCDIR(src/paps.cc)
 AC_CONFIG_HEADERS([config.h])
 
@@ -20,6 +21,7 @@ PKG_CHECK_MODULES(FMT, fmt >= 6.0)
 AC_SUBST(FMT_CFLAGS)
 AC_SUBST(FMT_LIBS)
 AC_PROG_INTLTOOL([0.23])
+LT_INIT
 
 GETTEXT_PACKAGE=paps
 AC_SUBST(GETTEXT_PACKAGE)
