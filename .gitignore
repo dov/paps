@@ -35,6 +35,8 @@
 /intltool-merge.in
 /intltool-update.in
 /libtool
+/m4/libtool.m4
+/m4/lt*.m4
 /po/*.gmo
 /po/*.mo
 /po/.intltool-merge-cache
