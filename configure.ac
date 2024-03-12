@@ -23,6 +23,10 @@ AC_SUBST(FMT_LIBS)
 AC_PROG_INTLTOOL([0.23])
 LT_INIT
 
+ad_FUNC_SYSTEMPAPERNAME
+AS_IF([test "$ac_cv_lib_paper_systempapername" = "no" -o "$ac_cv_header_paper_h" = "no"],
+  [AC_MSG_ERROR([paps needs libpaper to work])])
+
 GETTEXT_PACKAGE=paps
 AC_SUBST(GETTEXT_PACKAGE)
 AC_DEFINE_UNQUOTED([GETTEXT_PACKAGE], ["$GETTEXT_PACKAGE"], [Package name for gettext.])
