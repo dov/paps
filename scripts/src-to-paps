@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 ######################################################################
-#  Use GNU source-hightlight to turn source code into pango markup
+#  Use GNU source-highlight to turn source code into pango markup
 #  and pipe to paps.
 #
 #  This is currently of limited use for long lines, as the paps/pango
