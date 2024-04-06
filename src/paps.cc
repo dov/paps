@@ -1833,8 +1833,10 @@ build_document_info(PageLayout* page_layout,
   document_info["path"] = page_layout->filename_path;
 
   GStatBuf stat_buf;
-  g_stat(page_layout->filename_path.c_str(), &stat_buf);
-  document_info["mtime"] = (time_t)stat_buf.st_mtime;
+  if (g_stat(page_layout->filename_path.c_str(), &stat_buf) == 0)
+    document_info["mtime"] = (time_t)stat_buf.st_mtime;
+  else
+    document_info["mtime"] = time(nullptr);
   document_info["now"] = time(nullptr);
 
   page_layout->document_info["num_pages"] = page_layout->num_pages;

@@ -13,6 +13,7 @@ gobject_dep = dependency('gobject-2.0')
 
 # C compiler. This is the cross compiler if we're cross-compiling
 cc = meson.get_compiler('c')
+libpaper = cc.find_library('paper')
 
 cdata = configuration_data()
 

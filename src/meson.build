@@ -32,7 +32,8 @@ paps = executable('paps',
                                   cairo_dep,
                                   glib_dep,
                                   gobject_dep,
-                                  fmt_dep],
+                                  fmt_dep,
+                                  libpaper],
                   install: true)
 
 install_man('paps.1')

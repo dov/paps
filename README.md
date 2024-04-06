@@ -28,5 +28,7 @@ But I finally did so and released the resulting version on github in 2015 as ver
 
 # Usage
 
-Run `paps --help` for getting help.
+Run `paps --help` for getting usage help.
+
+Run `man paps` for the man page
 
