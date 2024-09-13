@@ -42,8 +42,8 @@ endif
 # This is available pretty much everywhere
 cdata.set('HAVE_STRINGIZE', 1)
 
-# Assume we have nls, since paps doesn't compile without it
-cdata.set('ENABLE_NLS',1)
+# i18n support
+i18n = import('i18n')
 
 # Not really sure what this is used for, but paps doesn't compile without it.
 cdata.set_quoted('DATADIR','.')
@@ -56,10 +56,17 @@ endif
 cdata.set_quoted('GETTEXT_PACKAGE', meson.project_name())
 cdata.set_quoted('PACKAGE_STRING', 'paps-' + meson.project_version())
 
+incs = include_directories('.', 'src')
+
+subdir('src')
+nls = get_option('nls')
+if nls
+  cdata.set('ENABLE_NLS', 1)
+  subdir('po')
+endif
+
 # write config.h
 config_h = configure_file(output: 'config.h', configuration: cdata)
-
-incs = include_directories('.', 'src')
 
 # Install the src-to-paps script with its pango_markup.outlang
 # dependancy.
@@ -68,5 +75,3 @@ install_data(['misc/pango_markup.outlang'],
 
 install_data(['scripts/src-to-paps'],
              install_dir : 'bin')
-
-subdir('src')
