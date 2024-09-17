@@ -1107,7 +1107,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
       while (p != nullptr && *p)
         {
           wc = g_utf8_get_char (p);
-          next = g_utf8_next_char (p);
+          next = (char *) g_utf8_next_char (p);
           if (wc == (gunichar)-1)
             {
               fprintf (stderr, _("%s: Invalid character in input\n"), g_get_prgname ());
@@ -1122,7 +1122,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
               para->length = p - last_para;
               /* handle dos line breaks */
               if (wc == '\r' && *next == '\n')
-                  next = g_utf8_next_char(next);
+                  next = (char *) g_utf8_next_char(next);
               para->layout = pango_layout_new (pango_context);
 
               if (page_layout->cpi > 0.0L)
@@ -1193,7 +1193,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
                       g_free (newtext);
 
                       para->length = i;
-                      next = g_utf8_offset_to_pointer (para->text, para->length);
+                      next = (char *) g_utf8_offset_to_pointer (para->text, para->length);
                       wc = g_utf8_get_char (g_utf8_prev_char (next));
                     }
                   else
