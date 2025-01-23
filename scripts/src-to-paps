@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 ######################################################################
 #  Use GNU source-hightlight to turn source code into pango markup
