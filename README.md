@@ -9,7 +9,7 @@ See file:INSTALL.md
 
 # Example
 
-Here is the output from processing the file misc/small-hello.utf8:
+Here is the output from processing the file examples/small-hello.utf8:
 
 ![Example image](misc/small-hello.png)
 
