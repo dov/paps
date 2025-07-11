@@ -54,7 +54,11 @@ static string scalar_to_string(scalar_t scalar,
     time_t val = get<time_t>(scalar);
     if (!spec.length())
       return to_string(val);
-    return format(runtime(format("{{:{}}}", spec)), fmt::localtime(val));
+    const auto *tm = std::localtime(&val);
+    if (tm == nullptr)
+      return {};
+
+    return format(runtime(format("{{:{}}}", spec)), *tm);
   }
   throw runtime_error("Unrecognized type!"); // I shouldn't be here!
 }
