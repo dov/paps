@@ -27,13 +27,17 @@
 #include <variant>
 #include <fmt/chrono.h>
 
-using scalar_t = std::variant<int, std::string, double, std::time_t>;
+// Embed the time to disambiguate on systems where time_t==int 
+struct paps_time_t {
+  std::time_t time;
+};
+
+using scalar_t = std::variant<int, std::string, double, paps_time_t>;
 using dict_t = std::map<std::string, scalar_t>;
 
 // Take a python like format string and a dictionary and format
 // it according to the format string.
 std::string format_from_dict(const std::string& str,
                              dict_t dict);
-
 
 #endif /* FORMAT_FROM_DICT */

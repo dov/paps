@@ -495,13 +495,10 @@ $ \fBpaps --separation-lines -o /tmp/foo.pdf --header --header-left='' \\
  --header-center='{path}' --header-right='' --footer \\
  --footer-left='Printed {now:%c}' \\
  --footer-right='Page {page_idx}/{num_pages}' \\
- `pwd`/paps.ccx\fR
+ `pwd`/paps.cc\fR
 .fi
 .in -2
 .LP
-Here paps will assume the input is in Japanese EUC encoding and will use
-Japanese eucjp locale to render the output. If \-\-header is added, the date is
-printed in Japanese.
 
 .SH ENVIRONMENT VARIABLES
 .B paps
@@ -543,3 +540,4 @@ paps was written by Dov Grobgeld <dov.grobgeld@gmail.com>.
 .PP
 This manual page was written by Lior Kaplan <kaplan@debian.org>,
 for the Debian project (but may be used by others).
+

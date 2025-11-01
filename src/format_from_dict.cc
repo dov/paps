@@ -49,9 +49,9 @@ static string scalar_to_string(scalar_t scalar,
       return to_string(val);
     return format(runtime(format("{{:{}}}", spec)), val);
   }
-  if (holds_alternative<time_t>(scalar))
+  if (holds_alternative<paps_time_t>(scalar))
   {
-    time_t val = get<time_t>(scalar);
+    time_t val = get<paps_time_t>(scalar).time;
     if (!spec.length())
       return to_string(val);
     const auto *tm = std::localtime(&val);
@@ -70,7 +70,7 @@ string format_from_dict(const string& str,
 {
   string res;
 
-  // Currenly no support for double {{ and double }}
+  // Currently no support for double {{ and double }}
   int pos=0;
   size_t len = str.size();
   while (true) {
@@ -89,7 +89,6 @@ string format_from_dict(const string& str,
     if (end < len-1 && str[end+1] == '}')
       throw runtime_error(format("Can't have double }}}} in formatting clause!", start));
 
-    // TBD - fill in
     res += str.substr(pos, start-pos);
 
     string spec = str.substr(start+1, end-start-1);
@@ -115,4 +114,3 @@ string format_from_dict(const string& str,
   
   return res;
 }
-

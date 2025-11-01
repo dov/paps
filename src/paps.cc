@@ -55,16 +55,16 @@ using namespace fmt;
 #ifdef ENABLE_NLS
 #include <libintl.h>
 
-#define	_(str)		gettext(str)
+#define _(str)          gettext(str)
 #ifdef gettext_noop
-#define N_(str)		gettext_noop(str)
+#define N_(str)         gettext_noop(str)
 #else
-#define N_(str)		(str)
+#define N_(str)         (str)
 #endif
 
-#else	/* NLS is disabled */
-#define _(str)		(str)
-#define N_(str)		(str)
+#else   /* NLS is disabled */
+#define _(str)          (str)
+#define N_(str)         (str)
 #endif
 
 #define BUFSIZE 1024
@@ -78,12 +78,12 @@ using namespace fmt;
  * Cairo sets limit on the comment line for cairo_ps_surface_dsc_comment() to
  * 255 characters, including the initial percent characters.
  */
-#define	CAIRO_COMMENT_MAX       255
+#define CAIRO_COMMENT_MAX       255
 
-#define	MARGIN_LEFT     36
-#define	MARGIN_RIGHT    36
-#define	MARGIN_TOP      36
-#define	MARGIN_BOTTOM   36
+#define MARGIN_LEFT     36
+#define MARGIN_RIGHT    36
+#define MARGIN_TOP      36
+#define MARGIN_BOTTOM   36
 
 
 typedef enum {
@@ -215,10 +215,10 @@ static void build_document_info            (PageLayout* page_layout,
 
 bool
 copy_pango_parse_enum (GType       type,
-		   const char *str,
- 		   int        *value,
-		   bool    warn,
-		   char      **possible_values);
+                   const char *str,
+                   int        *value,
+                   bool    warn,
+                   char      **possible_values);
 
 static char* get_encoding(void);
 string get_date();
@@ -298,7 +298,7 @@ _paps_arg_paper_cb(const char *option_name,
 
 static bool
 parse_int (const char *word,
-	   int        *out)
+           int        *out)
 {
   char *end;
   long val;
@@ -324,10 +324,10 @@ parse_int (const char *word,
 // A local copy of the deprecated pango_parse_enum.
 bool
 copy_pango_parse_enum (GType       type,
-		   const char *str,
- 		   int        *value,
-		   bool    warn,
-		   char      **possible_values)
+                   const char *str,
+                   int        *value,
+                   bool    warn,
+                   char      **possible_values)
 {
   GEnumClass *klass = nullptr;
   bool ret = true;
@@ -341,35 +341,35 @@ copy_pango_parse_enum (GType       type,
   if (v)
     {
       if (G_LIKELY (value))
-	*value = v->value;
+        *value = v->value;
     }
   else if (!parse_int (str, value))
     {
       ret = false;
       if (G_LIKELY (warn || possible_values))
-	{
-	  int i;
-	  GString *s = g_string_new (nullptr);
-	  gchar *gstr;
+        {
+          int i;
+          GString *s = g_string_new (nullptr);
+          gchar *gstr;
 
-	  for (i = 0, v = g_enum_get_value (klass, i); v;
-	       i++  , v = g_enum_get_value (klass, i))
-	    {
-	      if (i)
-		g_string_append_c (s, '/');
-	      g_string_append (s, v->value_nick);
-	    }
+          for (i = 0, v = g_enum_get_value (klass, i); v;
+               i++  , v = g_enum_get_value (klass, i))
+            {
+              if (i)
+                g_string_append_c (s, '/');
+              g_string_append (s, v->value_nick);
+            }
 
-	  if (warn)
-	    g_warning ("%s must be one of %s",
-		       G_ENUM_CLASS_TYPE_NAME(klass),
-		       s->str);
+          if (warn)
+            g_warning ("%s must be one of %s",
+                       G_ENUM_CLASS_TYPE_NAME(klass),
+                       s->str);
 
-	  gstr = g_string_free (s, possible_values ? false : true);
+          gstr = g_string_free (s, possible_values ? false : true);
 
-	  if (possible_values)
-	    *possible_values = gstr;
-	}
+          if (possible_values)
+            *possible_values = gstr;
+        }
     }
 
   g_type_class_unref (klass);
@@ -1836,10 +1836,10 @@ build_document_info(PageLayout* page_layout,
 
   GStatBuf stat_buf;
   if (g_stat(page_layout->filename_path.c_str(), &stat_buf) == 0)
-    document_info["mtime"] = (time_t)stat_buf.st_mtime;
+    document_info["mtime"] = paps_time_t {stat_buf.st_mtime };
   else
-    document_info["mtime"] = time(nullptr);
-  document_info["now"] = time(nullptr);
+    document_info["mtime"] = paps_time_t {time(nullptr) };
+  document_info["now"] = paps_time_t { time(nullptr) };
 
   page_layout->document_info["num_pages"] = page_layout->num_pages;
 }
@@ -1848,3 +1848,4 @@ string fn_basename(const string& filename)
 {
   return basename((char*)filename.c_str());
 }
+
