@@ -44,7 +44,6 @@
 #include <paper.h>
 
 using namespace std;
-using namespace fmt;
 
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE /* for wcwidth */
@@ -599,7 +598,7 @@ int main(int argc, char *argv[])
     {"show-wrap", 0, 0, G_OPTION_ARG_NONE, &do_show_wrap,
      N_("Show characters for wrapping."), nullptr},
     {"paper", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_paper_cb,
-     N_("Set paper size [legal, letter, a3, a4]. (Default: a4)"), "PAPER"},
+     N_("Set paper size [legal, letter, a3, a4, a5]. (Default: a4)"), "PAPER"},
     {"gravity", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&parse_gravity,
      N_("Base glyph rotation [south, west, north, east, auto]. (Defaut: auto)"), "GRAVITY"},
     {"gravity-hint", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)&parse_gravity_hint,
@@ -1705,7 +1704,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
   //    1. Date
   //    2. Filename (title)
   //    3. Page
-  string header = format("<span font_desc=\"{}\">{}</span>\n"
+  string header = fmt::format("<span font_desc=\"{}\">{}</span>\n"
                   "<span font_desc=\"{}\">{}</span>\n"
                   "<span font_desc=\"{}\">{}</span>",
                   page_layout->header_font_desc,
@@ -1743,7 +1742,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
       if (page_layout->header_right)
         header_parts[2] = page_layout->header_right;
       else
-        header_parts[2] = format("{}",page);
+        header_parts[2] = fmt::format("{}",page);
     }
 
   for (auto& v : header_parts)
@@ -1751,7 +1750,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
 
   header = "";
   for (auto& hp : header_parts)
-    header += format("<span font_desc=\"{}\">{}</span>\n",
+    header += fmt::format("<span font_desc=\"{}\">{}</span>\n",
                      page_layout->header_font_desc,
                      hp);
 
