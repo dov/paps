@@ -21,6 +21,8 @@
  */
 
 #include "format_from_dict.h"
+#include <locale>
+#include <stdexcept>
 
 using namespace std;
 using namespace fmt;
@@ -58,7 +60,16 @@ static string scalar_to_string(scalar_t scalar,
     if (tm == nullptr)
       return {};
 
-    return format(runtime(format("{{:{}}}", spec)), *tm);
+    // Use the "L" modifier and the environment locale so that %A, %c etc.
+    // are localized, as strftime would.
+    string lspec = spec[0] == 'L' ? spec : "L" + spec;
+    std::locale loc;
+    try {
+      loc = std::locale("");
+    } catch (const std::runtime_error&) {
+      // Invalid locale in the environment. Fall back to the classic one.
+    }
+    return format(loc, runtime(format("{{:{}}}", lspec)), *tm);
   }
   throw runtime_error("Unrecognized type!"); // I shouldn't be here!
 }

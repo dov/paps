@@ -37,3 +37,10 @@ paps = executable('paps',
                   install: true)
 
 install_man('paps.1')
+
+test_format_from_dict = executable('test_format_from_dict',
+                                   ['test_format_from_dict.cc',
+                                    'format_from_dict.cc'],
+                                   include_directories: incs,
+                                   dependencies : [fmt_dep])
+test('format_from_dict', test_format_from_dict)

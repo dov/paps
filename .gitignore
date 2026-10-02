@@ -4,6 +4,7 @@
 /*.orig
 /*.rej
 /*.tab.c
+*.ps
 /*~
 /.*.sw[nop]
 /.deps
