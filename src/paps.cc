@@ -973,6 +973,7 @@ int main(int argc, char *argv[])
           max_width = w;
       page_layout.scale_x = 1.0L / page_layout.cpi * 72.0 * (gdouble)PANGO_SCALE / (gdouble)max_width;
       pango_font_metrics_unref (metrics);
+      g_object_unref (G_OBJECT (fontset));
       g_object_unref (G_OBJECT (fontmap));
 
       font_size = pango_font_description_get_size (font_description);
@@ -1012,6 +1013,7 @@ int main(int argc, char *argv[])
       line_height = (double)(pango_font_metrics_get_ascent (metrics)
                              + pango_font_metrics_get_descent (metrics)) / PANGO_SCALE;
       pango_font_metrics_unref (metrics);
+      g_object_unref (G_OBJECT (fontset));
       g_object_unref (G_OBJECT (fontmap));
 
       if (line_height > row_height && row_height > 0)
@@ -1048,6 +1050,18 @@ int main(int argc, char *argv[])
                &page_layout,
                pango_context);
 
+  g_list_free_full(pango_lines, g_free);
+  for (GList *l = paragraphs; l; l = l->next)
+    {
+      Paragraph *para = (Paragraph*)l->data;
+      g_object_unref(para->layout);
+      g_free(para);
+    }
+  g_list_free(paragraphs);
+  g_free(text);
+  g_object_unref(pango_context);
+  pango_font_description_free(font_description);
+  pango_cairo_font_map_set_default(nullptr); /* release the default font map */
   cairo_destroy (cr);
   cairo_surface_finish (surface);
   cairo_surface_destroy(surface);
@@ -1149,10 +1163,13 @@ layout_turn_off_hyphens(PangoLayout *layout)
 {
   // Request not to get any hypens
   PangoAttrList *attrs = pango_layout_get_attributes(layout);
-  if (attrs == NULL)
+  bool created = (attrs == NULL);
+  if (created)
     attrs = pango_attr_list_new ();
   pango_attr_list_insert(attrs, pango_attr_insert_hyphens_new(FALSE));
   pango_layout_set_attributes (layout, attrs);
+  if (created)
+    pango_attr_list_unref (attrs); /* the layout holds its own reference */
 }
 
 /* Take a UTF8 string and break it into paragraphs on \n characters
@@ -1466,6 +1483,7 @@ postscript_dsc_comments(cairo_surface_t *surface, PageLayout *pl)
     exit(1);
   }
   cairo_ps_surface_dsc_comment (surface, comment);
+  g_free (comment);
 }
 
 
