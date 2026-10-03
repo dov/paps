@@ -1,3 +1,32 @@
+Overview of changes between 0.8.0 and 0.8.1
+=============================================
+
+* Added --booklet and --signature for two-column booklet imposition
+  (works with --rtl, header and footer are drawn per column).
+
+* Added --geometry COLSxROWS; the font is scaled down to fit the row height.
+
+* Added --inkscape-multipage for SVG output with pages side by side,
+  and --page-gap.
+
+* Re-enabled --stretch-chars; the stretch is applied per line.
+
+* Fixed markup spanning line breaks and --cpi clipping of markup.
+
+* Date formatting in headers/footers is now localized.
+
+* Fixed memory leaks reported by AddressSanitizer.
+
+* Use libpaper for paper sizes, added libtool, and an option to disable NLS.
+
+* Build fixes: glib 2.82, fmt 11.2 (fmt::localtime), BSD with NLS,
+  unused-result warnings, and localized dates with fmt 10.
+
+* src-to-paps is now Python 3 and uses a portable shebang.
+
+* Documented landscape handling and PDF/SVG support.
+
+
 Overview of changes between 0.7.9 and 0.8.0
 =============================================
 
