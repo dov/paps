@@ -60,9 +60,14 @@ static string scalar_to_string(scalar_t scalar,
     if (tm == nullptr)
       return {};
 
-    // Use the "L" modifier and the environment locale so that %A, %c etc.
-    // are localized, as strftime would.
+    // Use the environment locale so that %A, %c etc. are localized, as
+    // strftime would. fmt >= 11 requires the "L" modifier for this, while
+    // fmt 10 localizes when given a locale and rejects the modifier.
+#if FMT_VERSION >= 110000
     string lspec = spec[0] == 'L' ? spec : "L" + spec;
+#else
+    string lspec = spec[0] == 'L' ? spec.substr(1) : spec;
+#endif
     std::locale loc;
     try {
       loc = std::locale("");
