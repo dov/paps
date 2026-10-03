@@ -327,8 +327,8 @@ The corresponding \fB\-\-cpi\fR and line spacing are computed from the page
 size, the margins, the number of columns and the header, so that exactly
 \fICOLS\fR characters fit on a line and \fIROWS\fR lines fit in a column.
 Either number may be omitted, e.g. \fB80x\fR or \fBx60\fR. A geometry
-overrides \fB\-\-cpi\fR (for COLS) and \fB\-\-lpi\fR (for ROWS). The line spacing is not
-adjusted to the font size, so a large number of rows may make lines overlap.
+overrides \fB\-\-cpi\fR (for COLS) and \fB\-\-lpi\fR (for ROWS). If the font is too tall for
+the row height it is scaled down so that lines do not overlap.
 .TP
 .B \-\-g-fatal-warnings
 Make all glib warnings fatal.

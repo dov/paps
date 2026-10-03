@@ -982,6 +982,48 @@ int main(int argc, char *argv[])
       pango_context_set_font_description (pango_context, font_description);
     }
 
+  /* With a geometry the font must also be small enough for the lines to fit
+     in the row height, or the lines would overlap. Only shrink the font. The
+     width then stays at the requested number of columns per line. */
+  if (page_layout.geometry_rows > 0)
+    {
+      double header_height = 0;
+      double row_height, line_height;
+      gint font_size;
+
+      if (do_draw_header)
+        {
+          PangoLayout *header_layout = pango_layout_new(pango_context);
+          PangoRectangle logical_rect;
+          gchar *header_markup = g_markup_printf_escaped("<span font_desc=\"%s\">Xg</span>", header_font_desc);
+          pango_layout_set_markup(header_layout, header_markup, -1);
+          pango_layout_line_get_extents(pango_layout_get_line(header_layout, 0),
+                                        nullptr, &logical_rect);
+          header_height = (double)logical_rect.height / PANGO_SCALE;
+          g_free(header_markup);
+          g_object_unref(header_layout);
+        }
+      row_height = (page_layout.column_height - header_height)
+                 / page_layout.geometry_rows;
+
+      fontmap = pango_ft2_font_map_new ();
+      fontset = pango_font_map_load_fontset (fontmap, pango_context, font_description, pango_language_get_default());
+      metrics = pango_fontset_get_metrics (fontset);
+      line_height = (double)(pango_font_metrics_get_ascent (metrics)
+                             + pango_font_metrics_get_descent (metrics)) / PANGO_SCALE;
+      pango_font_metrics_unref (metrics);
+      g_object_unref (G_OBJECT (fontmap));
+
+      if (line_height > row_height && row_height > 0)
+        {
+          double scale = row_height / line_height;
+          font_size = pango_font_description_get_size (font_description);
+          pango_font_description_set_size (font_description, (int)(font_size * scale));
+          glyph_font_size *= scale;
+          pango_context_set_font_description (pango_context, font_description);
+        }
+    }
+
   page_layout.scale_x = page_layout.scale_y = 1.0;
 
   if (encoding == nullptr)
