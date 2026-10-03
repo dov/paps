@@ -40,6 +40,7 @@
 #include <string>
 #include <fmt/core.h>
 #include "format_from_dict.h"
+#include "markup_balance.h"
 #include <vector>
 #include <paper.h>
 
@@ -1032,6 +1033,22 @@ int main(int argc, char *argv[])
     encoding = get_encoding();
 
   text = read_file(IN, encoding);
+  if (page_layout.do_use_markup)
+    {
+      // With --cpi long lines are clipped to the number of columns. Do it
+      // here on the visible text, since tags take no columns.
+      std::string wrapped;
+      if (page_layout.cpi > 0.0L)
+        {
+          size_t col = (size_t)(page_layout.column_width / 72.0 * page_layout.cpi);
+          wrapped = wrap_markup_to_columns(text, col);
+        }
+      else
+        wrapped = text;
+      std::string balanced = balance_markup_per_line(wrapped.c_str());
+      g_free(text);
+      text = g_strdup(balanced.c_str());
+    }
 
   if (output_format == FORMAT_POSTSCRIPT)
     postscript_dsc_comments(surface, &page_layout);
@@ -1266,7 +1283,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
                   len = g_utf8_strlen (para->text, para->length);
                   /* the amount of characters that can be put on the line against CPI */
                   col = (int)(page_layout->column_width / 72.0 * page_layout->cpi);
-                  if (len > col)
+                  if (len > col && !page_layout->do_use_markup)
                     {
                       /* need to wrap them up */
                       wnewtext = g_new (wchar_t, wcslen (wtext) + 1);
@@ -1314,7 +1331,10 @@ split_text_into_paragraphs (PangoContext *pango_context,
                     }
                   else
                     {
-                      pango_layout_set_text (para->layout, para->text, para->length);
+                      if (page_layout->do_use_markup)
+                        pango_layout_set_markup (para->layout, para->text, para->length);
+                      else
+                        pango_layout_set_text (para->layout, para->text, para->length);
                     }
 
                   g_free (wtext);

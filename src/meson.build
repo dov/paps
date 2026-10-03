@@ -25,7 +25,8 @@ endif
 
 paps = executable('paps',
                   ['paps.cc',
-                   'format_from_dict.cc'],
+                   'format_from_dict.cc',
+                   'markup_balance.cc'],
                   c_args: ['-DHAVE_CONFIG_H'],
                   include_directories: incs,
                   dependencies : [pango_dep,
@@ -44,3 +45,12 @@ test_format_from_dict = executable('test_format_from_dict',
                                    include_directories: incs,
                                    dependencies : [fmt_dep])
 test('format_from_dict', test_format_from_dict)
+
+test_markup_balance = executable('test_markup_balance',
+                                 ['test_markup_balance.cc',
+                                  'markup_balance.cc'],
+                                 include_directories: incs,
+                                 dependencies : [pango_dep, glib_dep])
+test('markup_balance', test_markup_balance)
+
+test('markup_cpi', find_program('test_markup_cpi.sh'), args: [paps])
