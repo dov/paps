@@ -16,7 +16,7 @@
 .\" .sp <n>    insert n+1 empty lines
 .\" for manpage-specific macros, see man(7)
 .SH NAME
-paps \- text to PostScript converter using Pango
+paps \- text to PostScript, PDF and SVG converter using Pango
 
 .SH SYNOPSIS
 .B paps
@@ -42,7 +42,11 @@ starting with two dashes (`-'). A summary of options is included below.
 Show summary of options.
 .TP
 .B \-\-landscape
-Landscape output. Default is portrait.
+Landscape output. Default is portrait. For PostScript output the page keeps
+the physical (portrait) paper dimensions and the landscape orientation is
+signaled with the DSC comments \fB%%Orientation\fR and
+\fB%%PageOrientation\fR, which viewers use to rotate the page. For PDF and
+SVG output the page width and height are swapped.
 .TP
 .B \-\-columns=cl
 Format output into \fIcl\fR columns. Default is 1.

@@ -786,7 +786,10 @@ int main(int argc, char *argv[])
       /* Otherwise keep postscript default */
     }
   
-  /* Swap width and height for landscape except for postscript */
+  /* Swap width and height for landscape except for postscript. A
+     postscript page keeps the physical paper dimensions, like a
+     printer's paper, and landscape is signaled by the DSC orientation
+     comments, which viewers use to rotate the page. */
   surface_page_width = page_width;
   surface_page_height = page_height;
   if (output_format != FORMAT_POSTSCRIPT && do_landscape)
