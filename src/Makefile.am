@@ -9,6 +9,6 @@ paps_DEPENDENCIES = $(lib_LIBRARIES)
 
 AM_CPPFLAGS = -DGETTEXT_PACKAGE='"$(GETTEXT_PACKAGE)"' -DDATADIR='"$(datadir)"'
 
-EXTRA_DIST = paps.1 meson.build test_markup_balance.cc test_markup_cpi.sh
+EXTRA_DIST = paps.1 meson.build test_markup_balance.cc test_markup_cpi.sh test_inkscape_multipage.sh
 
 -include $(top_srcdir)/git.mk

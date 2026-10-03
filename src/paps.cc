@@ -586,12 +586,85 @@ get_encoding(void)
   return encoding;
 }
 
+/* When non-null the cairo output is collected here instead of being
+   written directly, so that it can be post-processed. */
+static GString *svg_buffer = nullptr;
+
 static cairo_status_t paps_cairo_write_func(void *closure G_GNUC_UNUSED,
                                             const unsigned char *data,
                                             unsigned int length)
 {
-  fwrite(data,length,1,output_fh);
+  if (svg_buffer)
+    g_string_append_len(svg_buffer, (const gchar *)data, length);
+  else
+    fwrite(data,length,1,output_fh);
   return CAIRO_STATUS_SUCCESS;
+}
+
+/* Convert the SVG 1.2 <pageSet>/<page> structure that cairo emits into
+   Inkscape's multipage format: all pages are placed side by side on one
+   canvas and listed as <inkscape:page> in the namedview. */
+static void write_inkscape_multipage(const GString *in,
+                                     double page_w,
+                                     double page_h,
+                                     double gap)
+{
+  const char *page_start = strstr(in->str, "<pageSet>");
+  const char *svg_start = strstr(in->str, "<svg ");
+  if (!page_start || !svg_start)
+    {
+      /* Not the expected structure; pass through unchanged. */
+      fwrite(in->str, in->len, 1, output_fh);
+      return;
+    }
+  const char *svg_end = strchr(svg_start, '>');
+
+  /* Count pages and rewrite the body */
+  GString *body = g_string_new(nullptr);
+  GString *pages = g_string_new(nullptr);
+  const char *p = page_start + strlen("<pageSet>");
+  int n_pages = 0;
+  while (true)
+    {
+      const char *open = strstr(p, "<page>");
+      if (!open)
+        break;
+      const char *close = strstr(open, "</page>");
+      if (!close)
+        break;
+      double x = n_pages * (page_w + gap);
+      g_string_append_printf(body, "<g id=\"page%d\" transform=\"translate(%g,0)\">",
+                             n_pages + 1, x);
+      g_string_append_len(body, open + strlen("<page>"),
+                          close - (open + strlen("<page>")));
+      g_string_append(body, "</g>\n");
+      g_string_append_printf(pages,
+          "<inkscape:page x=\"%g\" y=\"0\" width=\"%g\" height=\"%g\" id=\"page%d-frame\"/>\n",
+          x, page_w, page_h, n_pages + 1);
+      n_pages++;
+      p = close + strlen("</page>");
+    }
+
+  double total_w = n_pages * page_w + (n_pages > 1 ? (n_pages - 1) * gap : 0);
+
+  /* Everything before the root tag (xml header), then a new root tag
+     and the original <defs> */
+  fwrite(in->str, svg_start - in->str, 1, output_fh);
+  fprintf(output_fh,
+          "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+          "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
+          "xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\" "
+          "xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\" "
+          "width=\"%g\" height=\"%g\" viewBox=\"0 0 %g %g\">\n",
+          total_w, page_h, total_w, page_h);
+  fwrite(svg_end + 1, page_start - (svg_end + 1), 1, output_fh);
+  fprintf(output_fh, "<sodipodi:namedview id=\"namedview1\">\n%s</sodipodi:namedview>\n",
+          pages->str);
+  fwrite(body->str, body->len, 1, output_fh);
+  fprintf(output_fh, "</svg>\n");
+
+  g_string_free(body, TRUE);
+  g_string_free(pages, TRUE);
 }
 
 int main(int argc, char *argv[])
@@ -601,6 +674,8 @@ int main(int argc, char *argv[])
   gboolean do_draw_separation_line = false;
   gboolean do_use_markup = false;
   gboolean do_show_wrap = false; /* Whether to show wrap characters */
+  gboolean do_inkscape_multipage = false;
+  int page_gap = 20;
   gboolean do_show_version = false; // Show version and exit
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
@@ -650,6 +725,10 @@ int main(int argc, char *argv[])
      N_("Base glyph orientation [natural, strong, line]. (Default: natural)"), "HINT"},
     {"format", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_format_cb,
      N_("Set output format [pdf, svg, ps]. (Default: ps)"), "FORMAT"},
+    {"inkscape-multipage", 0, 0, G_OPTION_ARG_NONE, &do_inkscape_multipage,
+     N_("With SVG output, write all pages side by side in Inkscape's multipage format."), nullptr},
+    {"page-gap", 0, 0, G_OPTION_ARG_INT, &page_gap,
+     N_("Set gap between pages with --inkscape-multipage. (Default: 20)"), "NUM"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
      N_("Set bottom margin in postscript point units (1/72 inch). (Default: 36)"), "NUM"},
     {"top-margin", 0, 0, G_OPTION_ARG_INT, &top_margin,
@@ -840,6 +919,14 @@ int main(int argc, char *argv[])
      comments, which viewers use to rotate the page. */
   surface_page_width = page_width;
   surface_page_height = page_height;
+  if (do_inkscape_multipage && output_format != FORMAT_SVG)
+    {
+      fprintf(stderr, _("--inkscape-multipage is only valid with SVG output\n"));
+      exit(1);
+    }
+  if (do_inkscape_multipage)
+    svg_buffer = g_string_new(nullptr);
+
   if (output_format != FORMAT_POSTSCRIPT && do_landscape)
     {
       surface_page_width = page_height;
@@ -1082,6 +1169,13 @@ int main(int argc, char *argv[])
   cairo_destroy (cr);
   cairo_surface_finish (surface);
   cairo_surface_destroy(surface);
+  if (svg_buffer)
+    {
+      write_inkscape_multipage(svg_buffer, surface_page_width,
+                               surface_page_height, page_gap);
+      g_string_free(svg_buffer, TRUE);
+      svg_buffer = nullptr;
+    }
   g_option_context_free(ctxt);
 
   return 0;

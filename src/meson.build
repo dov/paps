@@ -54,3 +54,5 @@ test_markup_balance = executable('test_markup_balance',
 test('markup_balance', test_markup_balance)
 
 test('markup_cpi', find_program('test_markup_cpi.sh'), args: [paps])
+
+test('inkscape_multipage', find_program('test_inkscape_multipage.sh'), args: [paps])

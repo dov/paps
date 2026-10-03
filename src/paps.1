@@ -330,6 +330,15 @@ Either number may be omitted, e.g. \fB80x\fR or \fBx60\fR. A geometry
 overrides \fB\-\-cpi\fR (for COLS) and \fB\-\-lpi\fR (for ROWS). If the font is too tall for
 the row height it is scaled down so that lines do not overlap.
 .TP
+.B \-\-inkscape-multipage
+With SVG output, place all pages side by side on one canvas and describe them
+as Inkscape pages, so that Inkscape 1.2 or later opens the file as a multipage
+document. Without this option cairo's non-standard SVG 1.2 \fBpageSet\fR
+structure is written, which Inkscape does not understand.
+.TP
+.B \-\-page-gap=NUM
+Gap in points between pages with \fB\-\-inkscape-multipage\fR. (Default: 20)
+.TP
 .B \-\-g-fatal-warnings
 Make all glib warnings fatal.
 .br
