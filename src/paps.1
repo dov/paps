@@ -73,6 +73,17 @@ Do right-to-left (RTL) text layout and align text to the right. Text direction i
 detected automatically. Use this option for explicit RTL layout and right
 alignment.
 .TP
+.B \-\-booklet
+Print in booklet order. Implies \fB\-\-landscape\fR and \fB\-\-columns=2\fR,
+so that each column is a booklet page. The pages are imposed so that the
+printed sheets, printed duplex and folded, form booklets of
+\fB\-\-signature\fR pages each. The header and footer are drawn per column,
+with the booklet page number. With \fB\-\-rtl\fR the booklet is bound on the right.
+.TP
+.B \-\-signature=NUM
+Number of booklet pages per signature. Must be a multiple of 4. Default is 16.
+The last signature is padded with blank pages to whole sheets.
+.TP
 .B \-\-justify
 Justify the layout. Stretch complete lines to fill the entire width.
 .TP

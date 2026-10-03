@@ -38,6 +38,7 @@
 #include <libgen.h>
 #include <config.h>
 #include <string>
+#include <algorithm>
 #include <fmt/core.h>
 #include "format_from_dict.h"
 #include "markup_balance.h"
@@ -132,6 +133,8 @@ struct PageLayout {
   bool do_show_wrap;
   bool do_use_markup;
   bool do_stretch_chars;
+  bool do_booklet;     /* Impose columns as booklet signatures */
+  int signature;       /* Booklet pages per signature (multiple of 4) */
   PangoDirection pango_dir;
   string title;
   string filename_path;
@@ -209,7 +212,8 @@ static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             int              page,
                                             int              num_pages,
                                             dict_t&           document_info,
-                                            bool             measure_only);
+                                            bool             measure_only,
+                                            int              column_idx = -1);
 static void   postscript_dsc_comments      (cairo_surface_t *surface,
                                             PageLayout   *page_layout);
 
@@ -677,6 +681,8 @@ int main(int argc, char *argv[])
   gboolean do_show_wrap = false; /* Whether to show wrap characters */
   gboolean do_inkscape_multipage = false;
   int page_gap = 20;
+  gboolean do_booklet = false;
+  int signature = 16;
   gboolean do_show_version = false; // Show version and exit
   int num_columns = 1;
   int top_margin = MARGIN_TOP, bottom_margin = MARGIN_BOTTOM,
@@ -728,6 +734,10 @@ int main(int argc, char *argv[])
      N_("Set output format [pdf, svg, ps]. (Default: ps)"), "FORMAT"},
     {"inkscape-multipage", 0, 0, G_OPTION_ARG_NONE, &do_inkscape_multipage,
      N_("With SVG output, write all pages side by side in Inkscape's multipage format."), nullptr},
+    {"booklet", 0, 0, G_OPTION_ARG_NONE, &do_booklet,
+     N_("Print two-column landscape pages in booklet order, with a header and footer per column. Implies --landscape and --columns=2."), nullptr},
+    {"signature", 0, 0, G_OPTION_ARG_INT, &signature,
+     N_("Number of booklet pages per signature, a multiple of 4. (Default: 16)"), "NUM"},
     {"page-gap", 0, 0, G_OPTION_ARG_INT, &page_gap,
      N_("Set gap between pages with --inkscape-multipage. (Default: 20)"), "NUM"},
     {"bottom-margin", 0, 0, G_OPTION_ARG_INT, &bottom_margin,
@@ -845,6 +855,24 @@ int main(int argc, char *argv[])
 
   if (do_rtl)
     pango_dir = PANGO_DIRECTION_RTL;
+
+  if (do_booklet)
+    {
+      if (num_columns != 1 && num_columns != 2)
+        fprintf(stderr, _("%s: --booklet requires two columns, ignoring --columns=%d.\n"), g_get_prgname (), num_columns);
+      num_columns = 2;
+      do_landscape = true;
+      if (signature <= 0)
+        {
+          fprintf(stderr, _("%s: Invalid input: --signature=%d, using default.\n"), g_get_prgname (), signature);
+          signature = 16;
+        }
+      if (signature % 4)
+        {
+          signature += 4 - signature % 4;
+          fprintf(stderr, _("%s: --signature must be a multiple of 4, using %d.\n"), g_get_prgname (), signature);
+        }
+    }
 
   page_layout.header_left = header_left;
   page_layout.header_center = header_center;
@@ -1027,6 +1055,8 @@ int main(int argc, char *argv[])
   page_layout.do_show_hyphens = do_show_hyphens;
   page_layout.do_stretch_chars = do_stretch_chars;
   page_layout.do_use_markup = do_use_markup;
+  page_layout.do_booklet = do_booklet;
+  page_layout.signature = signature;
   page_layout.do_tumble = do_tumble;
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
@@ -1605,111 +1635,153 @@ output_pages(cairo_surface_t *surface,
              PangoContext  *pango_context)
 {
   int pango_column_height = page_layout->column_height * PANGO_SCALE;
-  int height = 0;
-  int num_pages = -1; // This will be calculated in the measurement pass below
-  int title_height = 0;
   int row_height = 0; // Fixed line height in pango units. 0 means use natural height
-  GList *pango_lines_start = pango_lines;
+  int title_height = 0;
+  int num_columns = page_layout->num_columns;
   dict_t document_info;
 
   // Fill in the static document info 
   build_document_info(page_layout, document_info);
   document_info["num_pages"] = 0;
+  document_info["page_idx"] = 1;
 
-  // Do twice, the first time only measure without shipping
-  for (int i=0; i<2; i++)
+  // Measure the header and footer. Their heights are the same on all pages.
+  cairo_save(cr);
+  if (page_layout->do_draw_header)
+    title_height = draw_page_header_line_to_page(cr, false, page_layout, pango_context, 1, -1, document_info, true);
+  if (page_layout->do_draw_footer)
+    draw_page_header_line_to_page(cr, true, page_layout, pango_context, 1, -1, document_info, true);
+  cairo_restore(cr);
+
+  if (page_layout->geometry_rows > 0)
+    row_height = (pango_column_height - title_height)
+               / page_layout->geometry_rows;
+  else if (page_layout->lpi > 0.0L)
+    row_height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+
+  // Distribute the lines over the logical columns, which are the booklet
+  // pages when printing a booklet.
+  vector<vector<LineLink*>> columns(1);
+  int column_y_pos = title_height;
+  LineLink *prev_line_link = nullptr;
+  for (GList *l = pango_lines; l; l = l->next)
     {
-      int page_idx = 1;
-      bool measure_only = i==0;
-      LineLink *prev_line_link = nullptr;
-      int column_idx = 0;
-      int column_y_pos = 0;
+      LineLink *line_link = (LineLink*)l->data;
 
-      column_y_pos = 0;
-      document_info["page_idx"] = page_idx;
-
-      pango_lines = pango_lines_start;
-      start_page(surface, cr, page_layout, measure_only);
-    
-      if (page_layout->do_draw_header)
+      // With a geometry the rows must fit exactly. Otherwise keep the
+      // old behavior of breaking based on the natural line height.
+      if ((page_layout->geometry_rows > 0
+           ? column_y_pos + row_height > pango_column_height
+           : column_y_pos + line_link->logical_rect.height
+               >= pango_column_height) ||
+          (prev_line_link && prev_line_link->formfeed))
         {
-          title_height = draw_page_header_line_to_page(cr, false, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
+          columns.emplace_back();
           column_y_pos = title_height;
         }
-      if (page_layout->geometry_rows > 0)
-        row_height = (pango_column_height - title_height)
-                   / page_layout->geometry_rows;
-      else if (page_layout->lpi > 0.0L)
-        row_height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+      columns.back().push_back(line_link);
+      column_y_pos += row_height > 0 ? row_height
+                                    : line_link->logical_rect.height;
+      prev_line_link = line_link;
+    }
 
-      if (page_layout->do_draw_footer)
-          draw_page_header_line_to_page(cr, true, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
+  // A booklet shouldn't get a blank last page from a trailing form feed.
+  if (page_layout->do_booklet)
+    while (columns.size() > 1)
+      {
+        bool blank = true;
+        for (LineLink *ll : columns.back())
+          if (ll->ink_rect.width > 0 || ll->ink_rect.height > 0)
+            blank = false;
+        if (!blank)
+          break;
+        columns.pop_back();
+      }
 
-      while(pango_lines)
+  // For each output page and column slot, the logical column to draw, or
+  // -1 for an empty slot.
+  int num_logical = columns.size();
+  vector<int> slots;
+  if (page_layout->do_booklet)
+    {
+      bool rtl = page_layout->pango_dir == PANGO_DIRECTION_RTL;
+      for (int start = 0; start < num_logical; start += page_layout->signature)
         {
-          LineLink *line_link = (LineLink*)pango_lines->data;
-          PangoLayoutLine *line = line_link->pango_line;
-          bool draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
-          
-          /* Check if we need to move to next column */
-          // With a geometry the rows must fit exactly. Otherwise keep the
-          // old behavior of breaking based on the natural line height.
-          if ((page_layout->geometry_rows > 0
-               ? column_y_pos + row_height > pango_column_height
-               : column_y_pos + line_link->logical_rect.height
-                   >= pango_column_height) ||
-              (prev_line_link && prev_line_link->formfeed))
+          int n = min(page_layout->signature, num_logical - start);
+          n = (n + 3) / 4 * 4; // Pad the last signature to whole sheets
+          for (int k = 0; k < n/4; k++)
             {
-              column_idx++;
-              column_y_pos = title_height;
-              if (column_idx == page_layout->num_columns)
+              // Front and back of sheet k, as {left,right} booklet pages
+              int sides[2][2] = {{n-1-2*k, 2*k}, {2*k+1, n-2-2*k}};
+              for (auto& side : sides)
                 {
-                  column_idx = 0;
-                  if (!measure_only)
-                    eject_page(cr);
-                  page_idx++;
-                  document_info["page_idx"] = page_idx;
-                  start_page(surface, cr, page_layout, measure_only);
-    
-                  if (page_layout->do_draw_header) {
-                    title_height = draw_page_header_line_to_page(cr, false, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
-                    column_y_pos = title_height;
-                  }
-                  if (page_layout->do_draw_footer) 
-                    draw_page_header_line_to_page(cr, true, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
-                }
-              else
-                {
-                  eject_column(cr,
-                               title_height/PANGO_SCALE,
-                               page_layout,
-                               column_idx,
-                               measure_only
-                               );
+                  // RTL booklets are bound on the right
+                  int a = rtl ? side[1] : side[0];
+                  int b = rtl ? side[0] : side[1];
+                  slots.push_back(a < num_logical - start ? start + a : -1);
+                  slots.push_back(b < num_logical - start ? start + b : -1);
                 }
             }
-          if (row_height > 0)
-            height = row_height;
-          else
-            height = line_link->logical_rect.height;
-          if (!measure_only)
-            draw_line_to_page(cr,
-                              column_idx,
-                              column_y_pos+height,
-                              page_layout,
-                              line,
-                              draw_wrap_character);
-          column_y_pos += height;
-          pango_lines = pango_lines->next;
-          prev_line_link = line_link;
         }
-      if (!measure_only)
-        eject_page(cr);
+    }
+  else
+    {
+      int n = (num_logical + num_columns - 1) / num_columns * num_columns;
+      for (int i = 0; i < n; i++)
+        slots.push_back(i < num_logical ? i : -1);
+    }
 
-      if (measure_only)
+  int num_pages = slots.size() / num_columns;
+  document_info["num_pages"] = page_layout->do_booklet ? num_logical : num_pages;
+
+  for (int i=0; i<2; i++)
+    {
+      bool measure_only = i==0;
+      for (int page = 0; page < num_pages; page++)
         {
-          num_pages = page_idx;
-          document_info["num_pages"] = num_pages;
+          start_page(surface, cr, page_layout, measure_only);
+
+          for (int column_idx = 0; column_idx < num_columns; column_idx++)
+            {
+              int logical = slots[page*num_columns + column_idx];
+              // A booklet has a header and footer per column. Otherwise
+              // they span the page and are drawn with the first column.
+              bool per_column = page_layout->do_booklet;
+              int page_no = per_column ? logical + 1 : page + 1;
+              int header_col = per_column ? column_idx : -1;
+
+              if (column_idx > 0 && (per_column || logical >= 0))
+                eject_column(cr, title_height/PANGO_SCALE, page_layout,
+                             column_idx, measure_only);
+              if (logical < 0 && per_column)
+                continue;
+
+              document_info["page_idx"] = page_no;
+              if (per_column || column_idx == 0)
+                {
+                  if (page_layout->do_draw_header)
+                    draw_page_header_line_to_page(cr, false, page_layout, pango_context, page_no, num_pages, document_info, measure_only, header_col);
+                  if (page_layout->do_draw_footer)
+                    draw_page_header_line_to_page(cr, true, page_layout, pango_context, page_no, num_pages, document_info, measure_only, header_col);
+                }
+              if (logical < 0)
+                continue;
+
+              int y_pos = title_height;
+              for (LineLink *line_link : columns[logical])
+                {
+                  int height = row_height > 0 ? row_height
+                                              : line_link->logical_rect.height;
+                  bool draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
+                  if (!measure_only)
+                    draw_line_to_page(cr, column_idx, y_pos+height,
+                                      page_layout, line_link->pango_line,
+                                      draw_wrap_character);
+                  y_pos += height;
+                }
+            }
+          if (!measure_only)
+            eject_page(cr);
         }
     }
   return num_pages;
@@ -1929,7 +2001,8 @@ draw_page_header_line_to_page(cairo_t         *cr,
                               int              page,
                               int              num_pages,
                               dict_t&          document_info,
-                              bool             measure_only)
+                              bool             measure_only,
+                              int              column_idx)
 {
   PangoLayout *layout = pango_layout_new(ctx);
   PangoLayoutLine *line;
@@ -2002,7 +2075,19 @@ draw_page_header_line_to_page(cairo_t         *cr,
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  x_pos = page_layout->left_margin;
+  /* The header spans the page, or only one column if column_idx >= 0 */
+  double x_left = page_layout->left_margin;
+  double span = page_layout->page_width - page_layout->left_margin
+              - page_layout->right_margin;
+  if (column_idx >= 0)
+    {
+      if (page_layout->pango_dir == PANGO_DIRECTION_RTL)
+        column_idx = page_layout->num_columns - 1 - column_idx;
+      x_left += column_idx * (page_layout->column_width
+                              + page_layout->gutter_width);
+      span = page_layout->column_width;
+    }
+  x_pos = x_left;
 
   height = logical_rect.height / PANGO_SCALE /3.0;
 
@@ -2028,7 +2113,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
                                 &ink_rect,
                                 &logical_rect);
   /* pagenum_rect = logical_rect; */
-  x_pos = page_layout->left_margin + (page_layout->page_width-page_layout->left_margin-page_layout->right_margin)*0.5 - 0.5*logical_rect.width/PANGO_SCALE;
+  x_pos = x_left + span*0.5 - 0.5*logical_rect.width/PANGO_SCALE;
   cairo_move_to(cr, x_pos,y_pos);
   if (!measure_only)
     pango_cairo_show_layout_line(cr,line);
@@ -2038,7 +2123,7 @@ draw_page_header_line_to_page(cairo_t         *cr,
   pango_layout_line_get_extents(line,
                                 &ink_rect,
                                 &logical_rect);
-  x_pos = page_layout->page_width - page_layout->right_margin - (logical_rect.width / PANGO_SCALE );
+  x_pos = x_left + span - (logical_rect.width / PANGO_SCALE );
 
   //  x_pos = page_layout->page_width - page_layout->right_margin -
   //      ((logical_rect.width + pagenum_rect.width) / PANGO_SCALE + page_layout->gutter_width);
@@ -2056,8 +2141,8 @@ draw_page_header_line_to_page(cairo_t         *cr,
       else
         line_pos = page_layout->top_margin + page_layout->header_height + page_layout->header_sep;
       line_pos += logical_rect.height/2.0/PANGO_SCALE;
-      cairo_move_to(cr, page_layout->left_margin, line_pos);
-      cairo_line_to(cr,page_layout->page_width - page_layout->right_margin, line_pos);
+      cairo_move_to(cr, x_left, line_pos);
+      cairo_line_to(cr, x_left + span, line_pos);
       cairo_set_line_width(cr,0.1); // TBD
       cairo_stroke(cr);
     }
