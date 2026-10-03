@@ -119,6 +119,7 @@ struct PageLayout {
   const struct paper *paper_type = NULL;
   gdouble scale_x;
   gdouble scale_y;
+  gdouble stretch_y;  // Per-line y-scale of glyphs for --stretch-chars
   bool do_draw_header;
   bool do_draw_footer;
   bool do_duplex;
@@ -767,12 +768,8 @@ int main(int argc, char *argv[])
      N_("Set the amount of characters per inch."), "REAL"},
     {"geometry", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_geometry_cb,
      N_("Set the number of characters per line and lines per column as COLSxROWS. Computes --cpi and --lpi from the page size and margins."), "COLSxROWS"},
-    /*
-     * not fixed for cairo backend: disable
-     *
     {"stretch-chars", 0, 0, G_OPTION_ARG_NONE, &do_stretch_chars,
      N_("Stretch characters in y-direction to fill lines."), nullptr},
-     */
     {"g-fatal-warnings", 0, 0, G_OPTION_ARG_NONE, &do_fatal_warnings,
      N_("Make all glib warnings fatal."), NULL},
 
@@ -1014,6 +1011,7 @@ int main(int argc, char *argv[])
   page_layout.do_show_wrap = do_show_wrap;
   page_layout.scale_x = 1.0L;
   page_layout.scale_y = 1.0L;
+  page_layout.stretch_y = 1.0L;
   page_layout.header_sep = 0; // header_sep;
     
   page_layout.column_height = (int)page_height
@@ -1525,12 +1523,10 @@ split_paragraphs_into_lines(PageLayout *page_layout,
       par_list = par_list->next;
     }
   
-  /*
-   * not fixed for cairo backend: disable
-   *
-  if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L)
-      page_layout->scale_y = 1.0 / page_layout->lpi * 72.0 * PANGO_SCALE / max_height;
-   */
+  // Stretched in draw_line_to_page(), since scaling the cairo context
+  // would also scale the row positions.
+  if (page_layout->do_stretch_chars && page_layout->lpi > 0.0L && max_height > 0)
+      page_layout->stretch_y = 1.0 / page_layout->lpi * 72.0 * PANGO_SCALE / max_height;
 
   return g_list_reverse(line_list);
   
@@ -1843,8 +1839,12 @@ draw_line_to_page(cairo_t *cr,
       x_pos += page_layout->column_width  - logical_rect.width / PANGO_SCALE;
   }
 
-  cairo_move_to(cr, x_pos, y_pos);
+  cairo_save(cr);
+  cairo_translate(cr, x_pos, y_pos);
+  cairo_scale(cr, 1.0, page_layout->stretch_y);
+  cairo_move_to(cr, 0, 0);
   pango_cairo_show_layout_line(cr, line);
+  cairo_restore(cr);
 
   if (draw_wrap_character)
     {
