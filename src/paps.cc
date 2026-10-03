@@ -143,6 +143,8 @@ struct PageLayout {
   string header_font_desc;
   gdouble lpi;
   gdouble cpi;
+  int geometry_cols;  /* Requested characters per column line. 0 if unset */
+  int geometry_rows;  /* Requested lines per column. 0 if unset */
   dict_t document_info;
 };
 
@@ -528,6 +530,48 @@ _paps_arg_cpi_cb(const gchar *option_name,
 
 
 /*
+ * Parse a geometry string of the form COLSxROWS. Either number may be
+ * omitted, e.g. "80x" or "x60".
+ */
+static bool
+_paps_arg_geometry_cb(const gchar *option_name,
+                      const gchar *value,
+                      gpointer     data)
+{
+  PageLayout *page_layout = (PageLayout*)data;
+  gchar *p = nullptr;
+  long cols = 0, rows = 0;
+
+  if (value && *value)
+    {
+      const gchar *x = strpbrk(value, "xX");
+      if (x)
+        {
+          errno = 0;
+          if (x > value)
+            cols = strtol(value, &p, 10);
+          if (x > value && (p != x || errno == ERANGE))
+            x = nullptr;
+          else if (x[1])
+            {
+              rows = strtol(x + 1, &p, 10);
+              if (*p || errno == ERANGE)
+                x = nullptr;
+            }
+        }
+      if (x && cols >= 0 && rows >= 0 && (cols > 0 || rows > 0))
+        {
+          page_layout->geometry_cols = (int)cols;
+          page_layout->geometry_rows = (int)rows;
+          return true;
+        }
+    }
+
+  fprintf(stderr, _("Given geometry was invalid. Expected COLSxROWS.\n"));
+  return false;
+}
+
+/*
  * Return codeset name of the environment's locale. Use UTF8 by default
  */
 static char*
@@ -641,6 +685,8 @@ int main(int argc, char *argv[])
      N_("Set the amount of lines per inch."), "REAL"},
     {"cpi", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_cpi_cb,
      N_("Set the amount of characters per inch."), "REAL"},
+    {"geometry", 0, 0, G_OPTION_ARG_CALLBACK, (gpointer)_paps_arg_geometry_cb,
+     N_("Set the number of characters per line and lines per column as COLSxROWS. Computes --cpi and --lpi from the page size and margins."), "COLSxROWS"},
     /*
      * not fixed for cairo backend: disable
      *
@@ -694,6 +740,7 @@ int main(int argc, char *argv[])
 
   /* Init PageLayout parameters set by the option parsing */
   page_layout.cpi = page_layout.lpi = 0.0L;
+  page_layout.geometry_cols = page_layout.geometry_rows = 0;
 
   options = g_option_group_new("main","","",&page_layout, nullptr);
   g_option_group_add_entries(options, entries);
@@ -905,6 +952,12 @@ int main(int argc, char *argv[])
   else
      page_layout.title = fn_basename(filename_in);
   page_layout.header_font_desc = header_font_desc;
+
+  /* A geometry overrides --cpi. Rows are handled in output_pages() since
+     they depend on the header height. */
+  if (page_layout.geometry_cols > 0)
+    page_layout.cpi = page_layout.geometry_cols * 72.0
+                    / page_layout.column_width;
 
   /* calculate x-coordinate scale */
   if (page_layout.cpi > 0.0L)
@@ -1385,6 +1438,7 @@ output_pages(cairo_surface_t *surface,
   int height = 0;
   int num_pages = -1; // This will be calculated in the measurement pass below
   int title_height = 0;
+  int row_height = 0; // Fixed line height in pango units. 0 means use natural height
   GList *pango_lines_start = pango_lines;
   dict_t document_info;
 
@@ -1412,6 +1466,12 @@ output_pages(cairo_surface_t *surface,
           title_height = draw_page_header_line_to_page(cr, false, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
           column_y_pos = title_height;
         }
+      if (page_layout->geometry_rows > 0)
+        row_height = (pango_column_height - title_height)
+                   / page_layout->geometry_rows;
+      else if (page_layout->lpi > 0.0L)
+        row_height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+
       if (page_layout->do_draw_footer)
           draw_page_header_line_to_page(cr, true, page_layout, pango_context, page_idx, num_pages, document_info, measure_only);
 
@@ -1422,8 +1482,12 @@ output_pages(cairo_surface_t *surface,
           bool draw_wrap_character = page_layout->do_show_wrap && line_link->wrapped;
           
           /* Check if we need to move to next column */
-          if ((column_y_pos + line_link->logical_rect.height
-               >= pango_column_height) ||
+          // With a geometry the rows must fit exactly. Otherwise keep the
+          // old behavior of breaking based on the natural line height.
+          if ((page_layout->geometry_rows > 0
+               ? column_y_pos + row_height > pango_column_height
+               : column_y_pos + line_link->logical_rect.height
+                   >= pango_column_height) ||
               (prev_line_link && prev_line_link->formfeed))
             {
               column_idx++;
@@ -1454,8 +1518,8 @@ output_pages(cairo_surface_t *surface,
                                );
                 }
             }
-          if (page_layout->lpi > 0.0L)
-            height = (int)(1.0 / page_layout->lpi * 72.0 * PANGO_SCALE);
+          if (row_height > 0)
+            height = row_height;
           else
             height = line_link->logical_rect.height;
           if (!measure_only)
