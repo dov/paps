@@ -320,6 +320,18 @@ Interpret input as pango markup. Pango Text Attribute Markup Language allows
 marking parts of the text with tags defining additional attributes such as font
 face, size, weight, colors or text decoration such as underline or
 strikethrough.
+.IP
+paps extends the markup with a paragraph element, which Pango lacks:
+.B <p indent="\-24" left="24" align="justify">...</p>.
+.I left
+is the margin of all lines and
+.I indent
+the extra offset of the first line, both in points, so the example is a hanging
+indent. With \fB\-\-rtl\fR the margins are on the right.
+.I align
+is one of left, center, right or justify. The element applies to its input line
+and ends at </p> or at the end of the line. If a </p> follows on a later line,
+it applies to all the lines in between.
 .TP
 .B \-\-encoding=enc
 Assume encoding of the input text is \fIenc\fR. By default the encoding of the

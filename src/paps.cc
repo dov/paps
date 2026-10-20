@@ -42,6 +42,8 @@
 #include <fmt/core.h>
 #include "format_from_dict.h"
 #include "markup_balance.h"
+#include "paragraph_markup.h"
+#include <new>
 #include <vector>
 #include <paper.h>
 
@@ -159,6 +161,8 @@ struct LineLink {
   PangoRectangle ink_rect;
   int formfeed;
   bool wrapped;   // Whether the paragraph was character wrapped
+  bool explicit_x;  // x_offset positions the line; no RTL right-alignment
+  double x_offset;  // In points, from the column edge
 };
 
 typedef struct _Paragraph Paragraph;
@@ -172,6 +176,7 @@ struct _Paragraph {
   int formfeed;
   bool wrapped; 
   bool clipped;   // Whether the line was clipped. Used for CPI.
+  ParaProps props;  // From a <p> element
   PangoLayout *layout;
 };
 
@@ -181,6 +186,7 @@ static GList *split_paragraphs_into_lines  (PageLayout   *page_layout,
 static char  *read_file                    (FILE            *file,
                                             gchar           *encoding);
 static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
+                                            const std::vector<ParaProps> &line_props,
                                             PageLayout   *page_layout,
                                             int              paint_width,
                                             const char      *text);
@@ -204,7 +210,9 @@ static void   draw_line_to_page            (cairo_t         *cr,
                                             int              column_pos,
                                             PageLayout   *page_layout,
                                             PangoLayoutLine *line,
-                                            bool         draw_wrap_character);
+                                            bool         draw_wrap_character,
+                                            bool         explicit_x,
+                                            double       x_offset);
 static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             bool         is_footer,
                                             PageLayout   *page_layout,
@@ -1148,6 +1156,7 @@ int main(int argc, char *argv[])
     encoding = get_encoding();
 
   text = read_file(IN, encoding);
+  std::vector<ParaProps> line_props;
   if (page_layout.do_use_markup)
     {
       // With --cpi long lines are clipped to the number of columns. Do it
@@ -1160,7 +1169,12 @@ int main(int argc, char *argv[])
         }
       else
         wrapped = text;
-      std::string balanced = balance_markup_per_line(wrapped.c_str());
+      std::vector<std::string> warnings;
+      std::string stripped = extract_paragraph_props(wrapped.c_str(),
+                                                     line_props, &warnings);
+      for (const std::string &w : warnings)
+        fprintf(stderr, "%s: %s\n", g_get_prgname(), w.c_str());
+      std::string balanced = balance_markup_per_line(stripped.c_str());
       g_free(text);
       text = g_strdup(balanced.c_str());
     }
@@ -1169,6 +1183,7 @@ int main(int argc, char *argv[])
     postscript_dsc_comments(surface, &page_layout);
 
   paragraphs = split_text_into_paragraphs(pango_context,
+                                          line_props,
                                           &page_layout,
                                           page_layout.column_width, 
                                           text);
@@ -1311,10 +1326,68 @@ layout_turn_off_hyphens(PangoLayout *layout)
     pango_attr_list_unref (attrs); /* the layout holds its own reference */
 }
 
+/* Pango has no markup for paragraph properties, so the <p> element is
+ * applied to the layout here. The layout origin is placed so that the first
+ * line starts at left+indent and the others at left; Pango measures a
+ * negative indent from the origin to the first line.
+ *
+ * Pango alignment is relative to the paragraph direction, so for --rtl the
+ * margins are on the right ("start") side, where the layout already starts,
+ * and left and right swap.
+ */
+static double
+paragraph_origin(const ParaProps &props)
+{
+  return props.left + (props.indent < 0 ? props.indent : 0);
+}
+
+static double
+paragraph_x_origin(const ParaProps &props, bool rtl)
+{
+  return rtl ? 0 : paragraph_origin(props);
+}
+
+static void
+apply_paragraph_props(PangoLayout *layout, const ParaProps &props,
+                      int paint_width, bool rtl)
+{
+  double origin = paragraph_origin(props);
+  PangoAlignment start = PANGO_ALIGN_LEFT;   // "left" in LTR
+  PangoAlignment end = PANGO_ALIGN_RIGHT;
+  if (rtl)
+    std::swap(start, end);
+
+  if (pango_layout_get_width(layout) >= 0)
+    pango_layout_set_width(layout, (int)((paint_width - origin) * PANGO_SCALE));
+  pango_layout_set_indent(layout, (int)(props.indent * PANGO_SCALE));
+
+  // Unless set, the alignment is the start side, as for plain paragraphs
+  // (the global --justify stays on then)
+  if (props.align != ParaProps::ALIGN_DEFAULT)
+    pango_layout_set_justify(layout, props.align == ParaProps::ALIGN_JUSTIFY);
+  switch (props.align)
+    {
+    case ParaProps::ALIGN_LEFT:
+      pango_layout_set_alignment(layout, start);
+      break;
+    case ParaProps::ALIGN_CENTER:
+      pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+      break;
+    case ParaProps::ALIGN_RIGHT:
+      pango_layout_set_alignment(layout, end);
+      break;
+    case ParaProps::ALIGN_JUSTIFY:
+    case ParaProps::ALIGN_DEFAULT:
+      pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
+      break;
+    }
+}
+
 /* Take a UTF8 string and break it into paragraphs on \n characters
  */
 static GList *
 split_text_into_paragraphs (PangoContext *pango_context,
+                            const std::vector<ParaProps> &line_props,
                             PageLayout *page_layout,
                             int paint_width,  /* In pixels */
                             const char *text)
@@ -1324,6 +1397,7 @@ split_text_into_paragraphs (PangoContext *pango_context,
   gunichar wc;
   GList *result = nullptr;
   const char *last_para = text;
+  size_t para_idx = 0;
 
   /* If we are using markup we treat the entire text as a single paragraph.
    * I tested it and found that this is much slower than the split and
@@ -1373,6 +1447,9 @@ split_text_into_paragraphs (PangoContext *pango_context,
               Paragraph *para = g_new (Paragraph, 1);
               para->wrapped = false;
               para->clipped = false;
+              new (&para->props) ParaProps(para_idx < line_props.size()
+                                           ? line_props[para_idx] : ParaProps());
+              para_idx++;
               para->text = last_para;
               para->length = p - last_para;
               /* handle dos line breaks */
@@ -1486,6 +1563,9 @@ split_text_into_paragraphs (PangoContext *pango_context,
               pango_layout_set_alignment (para->layout,
                                           page_layout->pango_dir == PANGO_DIRECTION_LTR
                                           ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
+              if (para->props.present)
+                apply_paragraph_props(para->layout, para->props, paint_width,
+                                      page_layout->pango_dir == PANGO_DIRECTION_RTL);
 
               para->height = 0;
 
@@ -1530,12 +1610,27 @@ split_paragraphs_into_lines(PageLayout *page_layout,
       Paragraph *para = (Paragraph*)par_list->data;
 
       para_num_lines = pango_layout_get_line_count(para->layout);
+      PangoLayoutIter *iter = para->props.present
+                              ? pango_layout_get_iter(para->layout) : nullptr;
 
       for (i=0; i<para_num_lines; i++)
         {
           PangoRectangle logical_rect, ink_rect;
           
           line_link = g_new(LineLink, 1);
+          line_link->explicit_x = false;
+          line_link->x_offset = 0;
+          if (iter)
+            {
+              // The layout places the line for indent and alignment
+              PangoRectangle layout_rect;
+              pango_layout_iter_get_line_extents(iter, nullptr, &layout_rect);
+              line_link->explicit_x = true;
+              line_link->x_offset = paragraph_x_origin(para->props,
+                                    page_layout->pango_dir == PANGO_DIRECTION_RTL)
+                                    + (double)layout_rect.x / PANGO_SCALE;
+              pango_layout_iter_next_line(iter);
+            }
           line_link->formfeed = 0;
           line_link->wrapped = (para->wrapped && i < para_num_lines - 1) || (para->clipped);
           line_link->pango_line = pango_layout_get_line(para->layout, i);
@@ -1549,6 +1644,8 @@ split_paragraphs_into_lines(PageLayout *page_layout,
           if (logical_rect.height > max_height)
               max_height = logical_rect.height;
         }
+      if (iter)
+        pango_layout_iter_free(iter);
 
       par_list = par_list->next;
     }
@@ -1776,7 +1873,9 @@ output_pages(cairo_surface_t *surface,
                   if (!measure_only)
                     draw_line_to_page(cr, column_idx, y_pos+height,
                                       page_layout, line_link->pango_line,
-                                      draw_wrap_character);
+                                      draw_wrap_character,
+                                      line_link->explicit_x,
+                                      line_link->x_offset);
                   y_pos += height;
                 }
             }
@@ -1884,7 +1983,9 @@ draw_line_to_page(cairo_t *cr,
                   int column_pos,
                   PageLayout *page_layout,
                   PangoLayoutLine *line,
-                  bool draw_wrap_character)
+                  bool draw_wrap_character,
+                  bool explicit_x,
+                  double x_offset)
 {
   /* Assume square aspect ratio for now */
   double y_pos = page_layout->top_margin
@@ -1907,7 +2008,9 @@ draw_line_to_page(cairo_t *cr,
                                 &ink_rect,
                                 &logical_rect);
 
-  if (page_layout->pango_dir == PANGO_DIRECTION_RTL) {
+  if (explicit_x)
+      x_pos += x_offset;
+  else if (page_layout->pango_dir == PANGO_DIRECTION_RTL) {
       x_pos += page_layout->column_width  - logical_rect.width / PANGO_SCALE;
   }
 

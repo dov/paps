@@ -26,7 +26,8 @@ endif
 paps = executable('paps',
                   ['paps.cc',
                    'format_from_dict.cc',
-                   'markup_balance.cc'],
+                   'markup_balance.cc',
+                   'paragraph_markup.cc'],
                   c_args: ['-DHAVE_CONFIG_H'],
                   include_directories: incs,
                   dependencies : [pango_dep,
@@ -57,3 +58,11 @@ test('markup_cpi', find_program('test_markup_cpi.sh'), args: [paps])
 
 test('inkscape_multipage', find_program('test_inkscape_multipage.sh'), args: [paps])
 test('booklet', find_program('test_booklet.sh'), args: [paps])
+
+test_paragraph_markup = executable('test_paragraph_markup',
+                                   ['test_paragraph_markup.cc',
+                                    'paragraph_markup.cc'],
+                                   include_directories: incs)
+test('paragraph_markup', test_paragraph_markup)
+
+test('paragraph_p', find_program('test_paragraph_p.sh'), args: [paps])
