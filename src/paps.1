@@ -332,6 +332,17 @@ indent. With \fB\-\-rtl\fR the margins are on the right.
 is one of left, center, right or justify. The element applies to its input line
 and ends at </p> or at the end of the line. If a </p> follows on a later line,
 it applies to all the lines in between.
+.IP
+Images are inserted with
+.B <img src="file.png" width="100" height="50"/>.
+The image is part of the line, sitting on the baseline, and the line grows to
+fit it. Only PNG is supported. A relative file name is relative to the input
+file. The size is in points; if only one of
+.I width
+and
+.I height
+is given the other keeps the aspect ratio, and without either one pixel is one
+point. An image wider or taller than the column is scaled down to fit.
 .TP
 .B \-\-encoding=enc
 Assume encoding of the input text is \fIenc\fR. By default the encoding of the

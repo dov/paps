@@ -43,6 +43,7 @@
 #include "format_from_dict.h"
 #include "markup_balance.h"
 #include "paragraph_markup.h"
+#include "inline_image.h"
 #include <new>
 #include <vector>
 #include <paper.h>
@@ -140,6 +141,7 @@ struct PageLayout {
   PangoDirection pango_dir;
   string title;
   string filename_path;
+  string base_dir;      // Where relative image names are looked up
   string filename;
   char* header_left = nullptr;
   char* header_center = nullptr;
@@ -187,6 +189,7 @@ static char  *read_file                    (FILE            *file,
                                             gchar           *encoding);
 static GList *split_text_into_paragraphs   (PangoContext    *pango_context,
                                             const std::vector<ParaProps> &line_props,
+                                            const std::vector<std::vector<ImageSpec>> &line_images,
                                             PageLayout   *page_layout,
                                             int              paint_width,
                                             const char      *text);
@@ -988,6 +991,7 @@ int main(int argc, char *argv[])
   pango_cairo_context_set_resolution(pango_context, 72.0); /* Native postscript resolution */
   
   /* Setup pango */
+  inline_images_init(pango_context);
   pango_context_set_base_dir (pango_context, pango_dir);
   pango_context_set_language (pango_context, pango_language_get_default ());
   pango_context_set_base_gravity (pango_context, gravity);
@@ -1069,6 +1073,12 @@ int main(int argc, char *argv[])
   page_layout.do_duplex = do_duplex;
   page_layout.pango_dir = pango_dir;
   page_layout.filename_path = filename_in;
+  if (IN != stdin)
+    {
+      gchar *dir = g_path_get_dirname(filename_in);
+      page_layout.base_dir = dir;
+      g_free(dir);
+    }
   page_layout.filename = fn_basename(filename_in);
 
   if (htitle)
@@ -1157,6 +1167,7 @@ int main(int argc, char *argv[])
 
   text = read_file(IN, encoding);
   std::vector<ParaProps> line_props;
+  std::vector<std::vector<ImageSpec>> line_images;
   if (page_layout.do_use_markup)
     {
       // With --cpi long lines are clipped to the number of columns. Do it
@@ -1171,7 +1182,7 @@ int main(int argc, char *argv[])
         wrapped = text;
       std::vector<std::string> warnings;
       std::string stripped = extract_paragraph_props(wrapped.c_str(),
-                                                     line_props, &warnings);
+                                                     line_props, &warnings, &line_images);
       for (const std::string &w : warnings)
         fprintf(stderr, "%s: %s\n", g_get_prgname(), w.c_str());
       std::string balanced = balance_markup_per_line(stripped.c_str());
@@ -1184,6 +1195,7 @@ int main(int argc, char *argv[])
 
   paragraphs = split_text_into_paragraphs(pango_context,
                                           line_props,
+                                          line_images,
                                           &page_layout,
                                           page_layout.column_width, 
                                           text);
@@ -1206,6 +1218,7 @@ int main(int argc, char *argv[])
     }
   g_list_free(paragraphs);
   g_free(text);
+  inline_images_free();
   g_object_unref(pango_context);
   pango_font_description_free(font_description);
   pango_cairo_font_map_set_default(nullptr); /* release the default font map */
@@ -1388,6 +1401,7 @@ apply_paragraph_props(PangoLayout *layout, const ParaProps &props,
 static GList *
 split_text_into_paragraphs (PangoContext *pango_context,
                             const std::vector<ParaProps> &line_props,
+                            const std::vector<std::vector<ImageSpec>> &line_images,
                             PageLayout *page_layout,
                             int paint_width,  /* In pixels */
                             const char *text)
@@ -1447,9 +1461,9 @@ split_text_into_paragraphs (PangoContext *pango_context,
               Paragraph *para = g_new (Paragraph, 1);
               para->wrapped = false;
               para->clipped = false;
-              new (&para->props) ParaProps(para_idx < line_props.size()
-                                           ? line_props[para_idx] : ParaProps());
-              para_idx++;
+              size_t line_idx = para_idx++;
+              new (&para->props) ParaProps(line_idx < line_props.size()
+                                           ? line_props[line_idx] : ParaProps());
               para->text = last_para;
               para->length = p - last_para;
               /* handle dos line breaks */
@@ -1563,6 +1577,10 @@ split_text_into_paragraphs (PangoContext *pango_context,
               pango_layout_set_alignment (para->layout,
                                           page_layout->pango_dir == PANGO_DIRECTION_LTR
                                           ? PANGO_ALIGN_LEFT : PANGO_ALIGN_RIGHT);
+              if (line_idx < line_images.size() && !line_images[line_idx].empty())
+                attach_inline_images(para->layout, line_images[line_idx],
+                                     page_layout->base_dir,
+                                     paint_width, page_layout->column_height);
               if (para->props.present)
                 apply_paragraph_props(para->layout, para->props, paint_width,
                                       page_layout->pango_dir == PANGO_DIRECTION_RTL);

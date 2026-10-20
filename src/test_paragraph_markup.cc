@@ -88,6 +88,36 @@ int main()
     std::string out = extract_paragraph_props("<span font=\"a>b\">x</span>\n", p);
     expect(out == "<span font=\"a>b\">x</span>\n", "quoted", "text");
   }
+  {
+    std::vector<ParaProps> p;
+    std::vector<std::string> w;
+    std::vector<std::vector<ImageSpec>> imgs;
+    std::string out = extract_paragraph_props(
+        "a <img src=\"x.png\" width=\"10.5\"/> b <img src='y z.png' height=\"4\">\nplain\n<b><img src=\"w.png\"/></b>\n",
+        p, &w, &imgs);
+    expect(out == "a " OBJECT_REPLACEMENT " b " OBJECT_REPLACEMENT "\nplain\n<b>" OBJECT_REPLACEMENT "</b>\n",
+           "images", "text");
+    expect(imgs.size() == 4 && p.size() == imgs.size(), "images", "one entry per line");
+    expect(imgs[0].size() == 2 && imgs[1].empty() && imgs[2].size() == 1, "images", "per line");
+    expect(imgs[0][0].src == "x.png" && imgs[0][0].width == 10.5 && imgs[0][0].height == 0,
+           "images", "first image");
+    expect(imgs[0][1].src == "y z.png" && imgs[0][1].height == 4, "images", "second image");
+    expect(w.empty(), "images", "unexpected warning");
+  }
+  {
+    std::vector<ParaProps> p;
+    std::vector<std::string> w;
+    std::vector<std::vector<ImageSpec>> imgs;
+    extract_paragraph_props("<img width=\"-1\" foo=\"1\"/></img>\n", p, &w, &imgs);
+    expect(w.size() == 4, "bad images", "expected 4 warnings: size, attribute, src, </img>");
+  }
+  {
+    // <img> inside <p> keeps the <p> nesting valid
+    std::vector<ParaProps> p;
+    std::vector<std::string> w;
+    extract_paragraph_props("<b><p left=\"3\"><img src=\"x.png\"/></p></b>\n", p, &w);
+    expect(w.empty() && p[0].present, "img in p", "no warning expected");
+  }
   if (!failures)
     printf("all paragraph markup tests passed\n");
   return failures ? 1 : 0;

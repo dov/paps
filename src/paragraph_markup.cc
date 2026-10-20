@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstdlib>
+#include <utility>
 #include "paragraph_markup.h"
 
 namespace {
@@ -84,12 +85,16 @@ bool parse_number(const std::string &v, double &out)
   return end != s && *end == '\0';
 }
 
-// Parse the attributes of a <p ...> tag into props.
-void parse_p_attributes(const std::string &tag, ParaProps &props,
-                        std::vector<std::string> *warnings)
+using Attributes = std::vector<std::pair<std::string, std::string>>;
+
+// Parse name="value" pairs of a tag, starting after the element name.
+Attributes parse_attributes(const std::string &tag, size_t i, const char *element,
+                            std::vector<std::string> *warnings)
 {
-  auto warn = [&](const std::string &m) { if (warnings) warnings->push_back(m); };
-  size_t i = 2;  // after "<p"
+  auto warn = [&](const std::string &m) {
+    if (warnings) warnings->push_back(std::string("<") + element + ">: " + m);
+  };
+  Attributes attrs;
   while (i < tag.size())
     {
       while (i < tag.size() && (isspace((unsigned char)tag[i]) || tag[i] == '/'))
@@ -103,7 +108,7 @@ void parse_p_attributes(const std::string &tag, ParaProps &props,
       if (i >= tag.size() || tag[i] != '=' || i + 1 >= tag.size()
           || (tag[i + 1] != '"' && tag[i + 1] != '\''))
         {
-          warn("<p>: attribute '" + name + "' needs a quoted value");
+          warn("attribute '" + name + "' needs a quoted value");
           break;
         }
       char quote = tag[i + 1];
@@ -111,18 +116,29 @@ void parse_p_attributes(const std::string &tag, ParaProps &props,
       size_t ve = tag.find(quote, vb);
       if (ve == std::string::npos)
         {
-          warn("<p>: unterminated value for attribute '" + name + "'");
+          warn("unterminated value for attribute '" + name + "'");
           break;
         }
-      std::string value = tag.substr(vb, ve - vb);
+      attrs.emplace_back(name, tag.substr(vb, ve - vb));
       i = ve + 1;
+    }
+  return attrs;
+}
 
+// Parse the attributes of a <p ...> tag into props.
+void parse_p_attributes(const std::string &tag, ParaProps &props,
+                        std::vector<std::string> *warnings)
+{
+  auto warn = [&](const std::string &m) { if (warnings) warnings->push_back("<p>: " + m); };
+  for (auto &nv : parse_attributes(tag, 2, "p", warnings))
+    {
+      const std::string &name = nv.first, &value = nv.second;
       if (name == "indent" || name == "left")
         {
           double d;
           if (!parse_number(value, d))
             {
-              warn("<p>: bad number '" + value + "' for attribute '" + name + "'");
+              warn("bad number '" + value + "' for attribute '" + name + "'");
               continue;
             }
           (name == "indent" ? props.indent : props.left) = d;
@@ -134,11 +150,40 @@ void parse_p_attributes(const std::string &tag, ParaProps &props,
           else if (value == "right") props.align = ParaProps::ALIGN_RIGHT;
           else if (value == "justify") props.align = ParaProps::ALIGN_JUSTIFY;
           else
-            warn("<p>: bad align '" + value + "', expected left, center, right or justify");
+            warn("bad align '" + value + "', expected left, center, right or justify");
         }
       else
-        warn("<p>: unknown attribute '" + name + "'");
+        warn("unknown attribute '" + name + "'");
     }
+}
+
+// Parse the attributes of an <img .../> tag.
+ImageSpec parse_img_attributes(const std::string &tag,
+                               std::vector<std::string> *warnings)
+{
+  auto warn = [&](const std::string &m) { if (warnings) warnings->push_back("<img>: " + m); };
+  ImageSpec img;
+  for (auto &nv : parse_attributes(tag, 4, "img", warnings))
+    {
+      const std::string &name = nv.first, &value = nv.second;
+      if (name == "src")
+        img.src = value;
+      else if (name == "width" || name == "height")
+        {
+          double d;
+          if (!parse_number(value, d) || d <= 0)
+            {
+              warn("bad size '" + value + "' for attribute '" + name + "'");
+              continue;
+            }
+          (name == "width" ? img.width : img.height) = d;
+        }
+      else
+        warn("unknown attribute '" + name + "'");
+    }
+  if (img.src.empty())
+    warn("missing src");
+  return img;
 }
 
 }  // namespace
@@ -146,7 +191,8 @@ void parse_p_attributes(const std::string &tag, ParaProps &props,
 std::string
 extract_paragraph_props(const char *text,
                         std::vector<ParaProps> &props,
-                        std::vector<std::string> *warnings)
+                        std::vector<std::string> *warnings,
+                        std::vector<std::vector<ImageSpec>> *images)
 {
   auto warn = [&](const std::string &m) { if (warnings) warnings->push_back(m); };
   std::vector<Token> toks = tokenize(text);
@@ -157,6 +203,7 @@ extract_paragraph_props(const char *text,
   size_t p_depth = 0;   // Depth of the other open elements at the <p>
   std::vector<std::string> stack;
   ParaProps line = active;
+  std::vector<ImageSpec> line_images;
 
   for (size_t t = 0; t < toks.size(); t++)
     {
@@ -169,6 +216,9 @@ extract_paragraph_props(const char *text,
       if (tok.kind == Token::BREAK)
         {
           props.push_back(line);
+          if (images)
+            images->push_back(std::move(line_images));
+          line_images.clear();
           out += tok.s;
           if (p_open)
             {
@@ -192,6 +242,20 @@ extract_paragraph_props(const char *text,
         }
 
       const std::string name = tag_name(tok.s);
+      if (name == "img")
+        {
+          if (is_close_tag(tok.s))
+            warn("</img> without <img>");
+          else
+            {
+              // A placeholder character; the image is attached to it later
+              out += OBJECT_REPLACEMENT;
+              ImageSpec img = parse_img_attributes(tok.s, warnings);
+              if (images)
+                line_images.push_back(img);
+            }
+          continue;
+        }
       if (name != "p")
         {
           out += tok.s;
@@ -227,5 +291,7 @@ extract_paragraph_props(const char *text,
         }
     }
   props.push_back(line);
+  if (images)
+    images->push_back(std::move(line_images));
   return out;
 }

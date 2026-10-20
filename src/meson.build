@@ -27,7 +27,8 @@ paps = executable('paps',
                   ['paps.cc',
                    'format_from_dict.cc',
                    'markup_balance.cc',
-                   'paragraph_markup.cc'],
+                   'paragraph_markup.cc',
+                   'inline_image.cc'],
                   c_args: ['-DHAVE_CONFIG_H'],
                   include_directories: incs,
                   dependencies : [pango_dep,
@@ -66,3 +67,4 @@ test_paragraph_markup = executable('test_paragraph_markup',
 test('paragraph_markup', test_paragraph_markup)
 
 test('paragraph_p', find_program('test_paragraph_p.sh'), args: [paps])
+test('inline_image', find_program('test_inline_image.sh'), args: [paps])
