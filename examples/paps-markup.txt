@@ -1,0 +1,17 @@
+<span size="x-large" weight="bold">paps markup</span>
+
+Plain Pango markup works as usual, e.g. <b>bold</b> and <i>italic</i>.
+
+<p indent="-18" left="18" align="justify">1. A hanging indent: the first line starts at the margin and the following lines are indented by 18 points. This paragraph is also justified, so the right edge is straight.</p>
+<p indent="-18" left="18" align="justify">2. A second item. Every <tt>&lt;p&gt;</tt> ends at its own end of line, so the settings do not leak into the next line.</p>
+
+<p align="center">Centered text</p>
+<p align="right">Right aligned text</p>
+<p left="36">Indented by 36 points.</p>
+
+<p left="36" align="justify">A <tt>&lt;p&gt;</tt> that is closed on a later line
+applies to every line in between, so this one wraps
+as three short lines.</p>
+
+An image inside a line: <img src="paps-markup-image.png" height="14"/> and a centered one:
+<p align="center"><img src="paps-markup-image.png"/></p>

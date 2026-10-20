@@ -32,3 +32,4 @@ Run `paps --help` for getting usage help.
 
 Run `man paps` for the man page
 
+With `--markup`, paps reads Pango markup extended with paragraph layout (`<p>`) and images (`<img/>`). See [PAPS-MARKUP.md](PAPS-MARKUP.md).

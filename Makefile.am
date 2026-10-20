@@ -1,7 +1,7 @@
 NULL =
 ACLOCAL_AMFLAGS=-I m4
 SUBDIRS = src po
-EXTRA_DIST = autogen.sh intltool-extract.in intltool-merge.in intltool-update.in scripts meson.build misc README.md INSTALL.md
+EXTRA_DIST = autogen.sh intltool-extract.in intltool-merge.in intltool-update.in scripts meson.build misc README.md PAPS-MARKUP.md INSTALL.md examples
 MAINTAINERCLEANFILES =		\
 	$(srcdir)/aclocal.m4	\
 	$(builddir)/config	\
