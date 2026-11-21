@@ -289,8 +289,11 @@ Set gutter width. Default is 40 postscript points.
 Draw page header with document name, date and page number for each page. Header
 is not printed by default. 
 .TP
+.B \-\-header-font=desc
+Use font based on description \fIdesc\fR for the header and footer, in the same format as \fB\-\-font\fR. Default is \fB"Monospace Bold 12"\fR.
+.TP
 .B \-\-header-left=fmt
-Sets the formatting for the left side of the header. See FORMAT for an explanation of the header and footer formatting. Default is the current localized date.
+Sets the formatting for the left side of the header. See FORMAT for an explanation of the header and footer formatting. The string may contain Pango markup, e.g. \fB'<span font_desc="Serif 9">{title}</span>'\fR, which overrides \fB\-\-header-font\fR for that text. Default is the current localized date.
 .TP
 .B \-\-header-center=fmt
 Sets the formatting for the center of the header. See FORMAT for an explanation of the header and footer formatting. Default is the filename.

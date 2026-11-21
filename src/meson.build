@@ -68,3 +68,4 @@ test('paragraph_markup', test_paragraph_markup)
 
 test('paragraph_p', find_program('test_paragraph_p.sh'), args: [paps])
 test('inline_image', find_program('test_inline_image.sh'), args: [paps])
+test('header_font', find_program('test_header_font.sh'), args: [paps])

@@ -216,6 +216,14 @@ static void   draw_line_to_page            (cairo_t         *cr,
                                             bool         draw_wrap_character,
                                             bool         explicit_x,
                                             double       x_offset);
+static string escape_markup(const string& in)
+{
+  gchar *e = g_markup_escape_text(in.c_str(), -1);
+  string out = e;
+  g_free(e);
+  return out;
+}
+
 static int    draw_page_header_line_to_page(cairo_t         *cr,
                                             bool         is_footer,
                                             PageLayout   *page_layout,
@@ -704,6 +712,7 @@ int main(int argc, char *argv[])
   gchar *encoding = nullptr;
   gchar *output = nullptr;
   gchar *htitle = nullptr;
+  gchar *header_font_opt = nullptr;
   gchar *header_left = nullptr;
   gchar *header_center = nullptr;
   gchar *header_right = nullptr;
@@ -719,6 +728,8 @@ int main(int argc, char *argv[])
      N_("Number of columns output. (Default: 1)"), "NUM"},
     {"font", 0, 0, G_OPTION_ARG_STRING, &font,
      N_("Set font. (Default: Monospace 12)"), "DESC"},
+    {"header-font", 0, 0, G_OPTION_ARG_STRING, &header_font_opt,
+     N_("Set font of the header and footer. (Default: Monospace Bold 12)"), "DESC"},
     {"output", 'o', 0, G_OPTION_ARG_STRING, &output,
      N_("Output file. (Default: stdout)"), "DESC"},
     {"version", 'v', 0, G_OPTION_ARG_NONE, &do_show_version,
@@ -1085,6 +1096,8 @@ int main(int argc, char *argv[])
      page_layout.title = htitle;
   else
      page_layout.title = fn_basename(filename_in);
+  if (header_font_opt)
+    header_font_desc = header_font_opt;
   page_layout.header_font_desc = header_font_desc;
 
   /* A geometry overrides --cpi. Rows are handled in output_pages() since
@@ -2167,12 +2180,12 @@ draw_page_header_line_to_page(cairo_t         *cr,
       if (page_layout->header_left)
         header_parts[0]=page_layout->header_left;
       else
-        header_parts[0]=get_date();
+        header_parts[0]=escape_markup(get_date());
     
       if (page_layout->header_center)
         header_parts[1] = page_layout->header_center;
       else
-        header_parts[1] = page_layout->filename;
+        header_parts[1] = escape_markup(page_layout->filename);
       
       if (page_layout->header_right)
         header_parts[2] = page_layout->header_right;

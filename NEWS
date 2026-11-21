@@ -7,6 +7,10 @@ Overview of changes between 0.8.1 and 0.8.2
   hanging indents) and left/center/right/justify alignment of a paragraph,
   and <img src= width= height=/> inserts an inline PNG image.
 
+* Added --header-font to set the font of the header and footer (#83).
+  The header and footer strings may contain Pango markup; the default
+  date, filename and page are now escaped.
+
 Overview of changes between 0.8.0 and 0.8.1
 =============================================
 
